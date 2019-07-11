@@ -15,31 +15,31 @@ import spark.util.AkkaUtils
 import spark.api.python.PythonWorkerFactory
 
 /**
- * Holds all the runtime environment objects for a running Spark instance (either master or worker),
- * including the serializer, Akka actor system, block manager, map output tracker, etc. Currently
- * Spark code finds the SparkEnv through a thread-local variable, so each thread that accesses these
- * objects needs to have the right SparkEnv set. You can get the current environment with
- * SparkEnv.get (e.g. after creating a SparkContext) and set it with SparkEnv.set.
- */
-class SparkEnv (
-    val executorId: String,
-    val actorSystem: ActorSystem,
-    val serializer: Serializer,
-    val closureSerializer: Serializer,
-    val cacheManager: CacheManager,
-    val mapOutputTracker: MapOutputTracker,
-    val shuffleFetcher: ShuffleFetcher,
-    val broadcastManager: BroadcastManager,
-    val blockManager: BlockManager,
-    val connectionManager: ConnectionManager,
-    val httpFileServer: HttpFileServer,
-    val sparkFilesDir: String
-  ) {
+  * Holds all the runtime environment objects for a running Spark instance (either master or worker),
+  * including the serializer, Akka actor system, block manager, map output tracker, etc. Currently
+  * Spark code finds the SparkEnv through a thread-local variable, so each thread that accesses these
+  * objects needs to have the right SparkEnv set. You can get the current environment with
+  * SparkEnv.get (e.g. after creating a SparkContext) and set it with SparkEnv.set.
+  */
+class SparkEnv(
+                val executorId: String,
+                val actorSystem: ActorSystem,
+                val serializer: Serializer,
+                val closureSerializer: Serializer,
+                val cacheManager: CacheManager,
+                val mapOutputTracker: MapOutputTracker,
+                val shuffleFetcher: ShuffleFetcher,
+                val broadcastManager: BroadcastManager,
+                val blockManager: BlockManager,
+                val connectionManager: ConnectionManager,
+                val httpFileServer: HttpFileServer,
+                val sparkFilesDir: String
+              ) {
 
   private val pythonWorkers = mutable.HashMap[(String, Map[String, String]), PythonWorkerFactory]()
 
   def stop() {
-    pythonWorkers.foreach { case(key, worker) => worker.stop() }
+    pythonWorkers.foreach { case (key, worker) => worker.stop() }
     httpFileServer.stop()
     mapOutputTracker.stop()
     shuffleFetcher.stop()
@@ -71,11 +71,11 @@ object SparkEnv extends Logging {
   }
 
   def createFromSystemProperties(
-      executorId: String,
-      hostname: String,
-      port: Int,
-      isDriver: Boolean,
-      isLocal: Boolean): SparkEnv = {
+                                  executorId: String,
+                                  hostname: String,
+                                  port: Int,
+                                  isDriver: Boolean,
+                                  isLocal: Boolean): SparkEnv = {
 
     val (actorSystem, boundPort) = AkkaUtils.createActorSystem("spark", hostname, port)
 
@@ -95,7 +95,7 @@ object SparkEnv extends Logging {
     }
 
     val serializer = instantiateClass[Serializer]("spark.serializer", "spark.JavaSerializer")
-    
+
     def registerOrLookup(name: String, newActor: => Actor): ActorRef = {
       if (isDriver) {
         logInfo("Registering " + name)
@@ -166,5 +166,5 @@ object SparkEnv extends Logging {
       httpFileServer,
       sparkFilesDir)
   }
-  
+
 }

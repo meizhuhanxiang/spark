@@ -36,7 +36,7 @@ object SparkBuild extends Build {
   def sharedSettings = Defaults.defaultSettings ++ Seq(
     organization := "org.spark-project",
     version := "0.7.3-SNAPSHOT",
-    scalaVersion := "2.9.3",
+    scalaVersion := "2.9.2",
     scalacOptions := Seq("-unchecked", "-optimize", "-deprecation"),
     unmanagedJars in Compile <<= baseDirectory map { base => (base / "lib" ** "*.jar").classpath },
     retrieveManaged := true,
@@ -129,10 +129,15 @@ object SparkBuild extends Build {
       "JBoss Repository" at "http://repository.jboss.org/nexus/content/repositories/releases/",
       "Spray Repository" at "http://repo.spray.cc/",
       "Cloudera Repository" at "https://repository.cloudera.com/artifactory/cloudera-repos/",
-      "Twitter4J Repository" at "http://twitter4j.org/maven2/"
+      "Twitter4J Repository" at "http://twitter4j.org/maven2/",
+      "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
+      "mvnrepository" at "http://mvnrepository.com/artifact/",
+      "akka Repository" at "https://repo.akka.io/releases/"
     ),
 
     libraryDependencies ++= Seq(
+      "voldemort.store.compress" % "h2-lzf" % "1.0",
+      "com.typesafe.akka" % "akka-zeromq" % "2.0.3" excludeAll(excludeNetty),
       "com.google.guava" % "guava" % "11.0.1",
       "log4j" % "log4j" % "1.2.16",
       "org.slf4j" % "slf4j-api" % slf4jVersion,

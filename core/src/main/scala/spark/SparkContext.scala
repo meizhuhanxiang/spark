@@ -44,22 +44,22 @@ import spark.util.{MetadataCleaner, TimeStampedHashMap}
 import spark.storage.{StorageStatus, StorageUtils, RDDInfo}
 
 /**
- * Main entry point for Spark functionality. A SparkContext represents the connection to a Spark
- * cluster, and can be used to create RDDs, accumulators and broadcast variables on that cluster.
- *
- * @param master Cluster URL to connect to (e.g. mesos://host:port, spark://host:port, local[4]).
- * @param appName A name for your application, to display on the cluster web UI.
- * @param sparkHome Location where Spark is installed on cluster nodes.
- * @param jars Collection of JARs to send to the cluster. These can be paths on the local file
- *             system or HDFS, HTTP, HTTPS, or FTP URLs.
- * @param environment Environment variables to set on worker nodes.
- */
+  * Main entry point for Spark functionality. A SparkContext represents the connection to a Spark
+  * cluster, and can be used to create RDDs, accumulators and broadcast variables on that cluster.
+  *
+  * @param master      Cluster URL to connect to (e.g. mesos://host:port, spark://host:port, local[4]).
+  * @param appName     A name for your application, to display on the cluster web UI.
+  * @param sparkHome   Location where Spark is installed on cluster nodes.
+  * @param jars        Collection of JARs to send to the cluster. These can be paths on the local file
+  *                    system or HDFS, HTTP, HTTPS, or FTP URLs.
+  * @param environment Environment variables to set on worker nodes.
+  */
 class SparkContext(
-    val master: String,
-    val appName: String,
-    val sparkHome: String = null,
-    val jars: Seq[String] = Nil,
-    val environment: Map[String, String] = Map())
+                    val master: String,
+                    val appName: String,
+                    val sparkHome: String = null,
+                    val jars: Seq[String] = Nil,
+                    val environment: Map[String, String] = Map())
   extends Logging {
 
   // Ensure logging is initialized before we spawn any threads
@@ -81,7 +81,8 @@ class SparkContext(
     System.getProperty("spark.driver.host"),
     System.getProperty("spark.driver.port").toInt,
     true,
-    isLocal)
+    isLocal
+  )
   SparkEnv.set(env)
 
   // Start the BlockManager UI
@@ -99,13 +100,15 @@ class SparkContext(
 
 
   // Add each JAR given through the constructor
-  jars.foreach { addJar(_) }
+  jars.foreach {
+    addJar(_)
+  }
 
   // Environment variables to pass to our executors
   private[spark] val executorEnvs = HashMap[String, String]()
   // Note: SPARK_MEM is included for Mesos, but overwritten for standalone mode in ExecutorRunner
   for (key <- Seq("SPARK_MEM", "SPARK_CLASSPATH", "SPARK_LIBRARY_PATH", "SPARK_JAVA_OPTS",
-      "SPARK_TESTING")) {
+    "SPARK_TESTING")) {
     val value = System.getenv(key)
     if (value != null) {
       executorEnvs(key) = value
@@ -116,15 +119,20 @@ class SparkContext(
   // Create and start the scheduler
   private var taskScheduler: TaskScheduler = {
     // Regular expression used for local[N] master format
-    val LOCAL_N_REGEX = """local\[([0-9]+)\]""".r
+    val LOCAL_N_REGEX =
+      """local\[([0-9]+)\]""".r
     // Regular expression for local[N, maxRetries], used in tests with failing tasks
-    val LOCAL_N_FAILURES_REGEX = """local\[([0-9]+)\s*,\s*([0-9]+)\]""".r
+    val LOCAL_N_FAILURES_REGEX =
+      """local\[([0-9]+)\s*,\s*([0-9]+)\]""".r
     // Regular expression for simulating a Spark cluster of [N, cores, memory] locally
-    val LOCAL_CLUSTER_REGEX = """local-cluster\[\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*]""".r
+    val LOCAL_CLUSTER_REGEX =
+      """local-cluster\[\s*([0-9]+)\s*,\s*([0-9]+)\s*,\s*([0-9]+)\s*]""".r
     // Regular expression for connecting to Spark deploy clusters
-    val SPARK_REGEX = """(spark://.*)""".r
+    val SPARK_REGEX =
+      """(spark://.*)""".r
     //Regular expression for connection to Mesos cluster
-    val MESOS_REGEX = """(mesos://.*)""".r
+    val MESOS_REGEX =
+      """(mesos://.*)""".r
 
     master match {
       case "local" =>
@@ -171,12 +179,12 @@ class SparkContext(
         MesosNativeLibrary.load()
         val scheduler = new ClusterScheduler(this)
         val coarseGrained = System.getProperty("spark.mesos.coarse", "false").toBoolean
-        val masterWithoutProtocol = master.replaceFirst("^mesos://", "")  // Strip initial mesos://
-        val backend = if (coarseGrained) {
-          new CoarseMesosSchedulerBackend(scheduler, this, masterWithoutProtocol, appName)
-        } else {
-          new MesosSchedulerBackend(scheduler, this, masterWithoutProtocol, appName)
-        }
+        val masterWithoutProtocol = master.replaceFirst("^mesos://", "") // Strip initial mesos://
+      val backend = if (coarseGrained) {
+        new CoarseMesosSchedulerBackend(scheduler, this, masterWithoutProtocol, appName)
+      } else {
+        new MesosSchedulerBackend(scheduler, this, masterWithoutProtocol, appName)
+      }
         scheduler.initialize(backend)
         scheduler
     }
@@ -222,98 +230,98 @@ class SparkContext(
   /** Distribute a local Scala collection to form an RDD, with one or more
     * location preferences (hostnames of Spark nodes) for each object.
     * Create a new partition for each collection item. */
-   def makeRDD[T: ClassManifest](seq: Seq[(T, Seq[String])]): RDD[T] = {
+  def makeRDD[T: ClassManifest](seq: Seq[(T, Seq[String])]): RDD[T] = {
     val indexToPrefs = seq.zipWithIndex.map(t => (t._2, t._1._2)).toMap
     new ParallelCollectionRDD[T](this, seq.map(_._1), seq.size, indexToPrefs)
   }
 
   /**
-   * Read a text file from HDFS, a local file system (available on all nodes), or any
-   * Hadoop-supported file system URI, and return it as an RDD of Strings.
-   */
+    * Read a text file from HDFS, a local file system (available on all nodes), or any
+    * Hadoop-supported file system URI, and return it as an RDD of Strings.
+    */
   def textFile(path: String, minSplits: Int = defaultMinSplits): RDD[String] = {
     hadoopFile(path, classOf[TextInputFormat], classOf[LongWritable], classOf[Text], minSplits)
       .map(pair => pair._2.toString)
   }
 
   /**
-   * Get an RDD for a Hadoop-readable dataset from a Hadoop JobConf giving its InputFormat and any
-   * other necessary info (e.g. file name for a filesystem-based dataset, table name for HyperTable,
-   * etc).
-   */
+    * Get an RDD for a Hadoop-readable dataset from a Hadoop JobConf giving its InputFormat and any
+    * other necessary info (e.g. file name for a filesystem-based dataset, table name for HyperTable,
+    * etc).
+    */
   def hadoopRDD[K, V](
-      conf: JobConf,
-      inputFormatClass: Class[_ <: InputFormat[K, V]],
-      keyClass: Class[K],
-      valueClass: Class[V],
-      minSplits: Int = defaultMinSplits
-      ): RDD[(K, V)] = {
+                       conf: JobConf,
+                       inputFormatClass: Class[_ <: InputFormat[K, V]],
+                       keyClass: Class[K],
+                       valueClass: Class[V],
+                       minSplits: Int = defaultMinSplits
+                     ): RDD[(K, V)] = {
     new HadoopRDD(this, conf, inputFormatClass, keyClass, valueClass, minSplits)
   }
 
   /** Get an RDD for a Hadoop file with an arbitrary InputFormat */
   def hadoopFile[K, V](
-      path: String,
-      inputFormatClass: Class[_ <: InputFormat[K, V]],
-      keyClass: Class[K],
-      valueClass: Class[V],
-      minSplits: Int = defaultMinSplits
-      ) : RDD[(K, V)] = {
+                        path: String,
+                        inputFormatClass: Class[_ <: InputFormat[K, V]],
+                        keyClass: Class[K],
+                        valueClass: Class[V],
+                        minSplits: Int = defaultMinSplits
+                      ): RDD[(K, V)] = {
     val conf = new JobConf(hadoopConfiguration)
     FileInputFormat.setInputPaths(conf, path)
     new HadoopRDD(this, conf, inputFormatClass, keyClass, valueClass, minSplits)
   }
 
   /**
-   * Smarter version of hadoopFile() that uses class manifests to figure out the classes of keys,
-   * values and the InputFormat so that users don't need to pass them directly. Instead, callers
-   * can just write, for example,
-   * {{{
-   * val file = sparkContext.hadoopFile[LongWritable, Text, TextInputFormat](path, minSplits)
-   * }}}
-   */
+    * Smarter version of hadoopFile() that uses class manifests to figure out the classes of keys,
+    * values and the InputFormat so that users don't need to pass them directly. Instead, callers
+    * can just write, for example,
+    * {{{
+    * val file = sparkContext.hadoopFile[LongWritable, Text, TextInputFormat](path, minSplits)
+    * }}}
+    */
   def hadoopFile[K, V, F <: InputFormat[K, V]](path: String, minSplits: Int)
-      (implicit km: ClassManifest[K], vm: ClassManifest[V], fm: ClassManifest[F])
-      : RDD[(K, V)] = {
+                                              (implicit km: ClassManifest[K], vm: ClassManifest[V], fm: ClassManifest[F])
+  : RDD[(K, V)] = {
     hadoopFile(path,
-        fm.erasure.asInstanceOf[Class[F]],
-        km.erasure.asInstanceOf[Class[K]],
-        vm.erasure.asInstanceOf[Class[V]],
-        minSplits)
+      fm.erasure.asInstanceOf[Class[F]],
+      km.erasure.asInstanceOf[Class[K]],
+      vm.erasure.asInstanceOf[Class[V]],
+      minSplits)
   }
 
   /**
-   * Smarter version of hadoopFile() that uses class manifests to figure out the classes of keys,
-   * values and the InputFormat so that users don't need to pass them directly. Instead, callers
-   * can just write, for example,
-   * {{{
-   * val file = sparkContext.hadoopFile[LongWritable, Text, TextInputFormat](path)
-   * }}}
-   */
+    * Smarter version of hadoopFile() that uses class manifests to figure out the classes of keys,
+    * values and the InputFormat so that users don't need to pass them directly. Instead, callers
+    * can just write, for example,
+    * {{{
+    * val file = sparkContext.hadoopFile[LongWritable, Text, TextInputFormat](path)
+    * }}}
+    */
   def hadoopFile[K, V, F <: InputFormat[K, V]](path: String)
-      (implicit km: ClassManifest[K], vm: ClassManifest[V], fm: ClassManifest[F]): RDD[(K, V)] =
+                                              (implicit km: ClassManifest[K], vm: ClassManifest[V], fm: ClassManifest[F]): RDD[(K, V)] =
     hadoopFile[K, V, F](path, defaultMinSplits)
 
   /** Get an RDD for a Hadoop file with an arbitrary new API InputFormat. */
   def newAPIHadoopFile[K, V, F <: NewInputFormat[K, V]](path: String)
-      (implicit km: ClassManifest[K], vm: ClassManifest[V], fm: ClassManifest[F]): RDD[(K, V)] = {
+                                                       (implicit km: ClassManifest[K], vm: ClassManifest[V], fm: ClassManifest[F]): RDD[(K, V)] = {
     newAPIHadoopFile(
-        path,
-        fm.erasure.asInstanceOf[Class[F]],
-        km.erasure.asInstanceOf[Class[K]],
-        vm.erasure.asInstanceOf[Class[V]])
+      path,
+      fm.erasure.asInstanceOf[Class[F]],
+      km.erasure.asInstanceOf[Class[K]],
+      vm.erasure.asInstanceOf[Class[V]])
   }
 
   /**
-   * Get an RDD for a given Hadoop file with an arbitrary new API InputFormat
-   * and extra configuration options to pass to the input format.
-   */
+    * Get an RDD for a given Hadoop file with an arbitrary new API InputFormat
+    * and extra configuration options to pass to the input format.
+    */
   def newAPIHadoopFile[K, V, F <: NewInputFormat[K, V]](
-      path: String,
-      fClass: Class[F],
-      kClass: Class[K],
-      vClass: Class[V],
-      conf: Configuration = hadoopConfiguration): RDD[(K, V)] = {
+                                                         path: String,
+                                                         fClass: Class[F],
+                                                         kClass: Class[K],
+                                                         vClass: Class[V],
+                                                         conf: Configuration = hadoopConfiguration): RDD[(K, V)] = {
     val job = new NewHadoopJob(conf)
     NewFileInputFormat.addInputPath(job, new Path(path))
     val updatedConf = job.getConfiguration
@@ -321,23 +329,23 @@ class SparkContext(
   }
 
   /**
-   * Get an RDD for a given Hadoop file with an arbitrary new API InputFormat
-   * and extra configuration options to pass to the input format.
-   */
+    * Get an RDD for a given Hadoop file with an arbitrary new API InputFormat
+    * and extra configuration options to pass to the input format.
+    */
   def newAPIHadoopRDD[K, V, F <: NewInputFormat[K, V]](
-      conf: Configuration = hadoopConfiguration,
-      fClass: Class[F],
-      kClass: Class[K],
-      vClass: Class[V]): RDD[(K, V)] = {
+                                                        conf: Configuration = hadoopConfiguration,
+                                                        fClass: Class[F],
+                                                        kClass: Class[K],
+                                                        vClass: Class[V]): RDD[(K, V)] = {
     new NewHadoopRDD(this, fClass, kClass, vClass, conf)
   }
 
   /** Get an RDD for a Hadoop SequenceFile with given key and value types. */
   def sequenceFile[K, V](path: String,
-      keyClass: Class[K],
-      valueClass: Class[V],
-      minSplits: Int
-      ): RDD[(K, V)] = {
+                         keyClass: Class[K],
+                         valueClass: Class[V],
+                         minSplits: Int
+                        ): RDD[(K, V)] = {
     val inputFormatClass = classOf[SequenceFileInputFormat[K, V]]
     hadoopFile(path, inputFormatClass, keyClass, valueClass, minSplits)
   }
@@ -347,53 +355,53 @@ class SparkContext(
     sequenceFile(path, keyClass, valueClass, defaultMinSplits)
 
   /**
-   * Version of sequenceFile() for types implicitly convertible to Writables through a
-   * WritableConverter. For example, to access a SequenceFile where the keys are Text and the
-   * values are IntWritable, you could simply write
-   * {{{
-   * sparkContext.sequenceFile[String, Int](path, ...)
-   * }}}
-   *
-   * WritableConverters are provided in a somewhat strange way (by an implicit function) to support
-   * both subclasses of Writable and types for which we define a converter (e.g. Int to
-   * IntWritable). The most natural thing would've been to have implicit objects for the
-   * converters, but then we couldn't have an object for every subclass of Writable (you can't
-   * have a parameterized singleton object). We use functions instead to create a new converter
-   * for the appropriate type. In addition, we pass the converter a ClassManifest of its type to
-   * allow it to figure out the Writable class to use in the subclass case.
-   */
-   def sequenceFile[K, V](path: String, minSplits: Int = defaultMinSplits)
-      (implicit km: ClassManifest[K], vm: ClassManifest[V],
-          kcf: () => WritableConverter[K], vcf: () => WritableConverter[V])
-      : RDD[(K, V)] = {
+    * Version of sequenceFile() for types implicitly convertible to Writables through a
+    * WritableConverter. For example, to access a SequenceFile where the keys are Text and the
+    * values are IntWritable, you could simply write
+    * {{{
+    * sparkContext.sequenceFile[String, Int](path, ...)
+    * }}}
+    *
+    * WritableConverters are provided in a somewhat strange way (by an implicit function) to support
+    * both subclasses of Writable and types for which we define a converter (e.g. Int to
+    * IntWritable). The most natural thing would've been to have implicit objects for the
+    * converters, but then we couldn't have an object for every subclass of Writable (you can't
+    * have a parameterized singleton object). We use functions instead to create a new converter
+    * for the appropriate type. In addition, we pass the converter a ClassManifest of its type to
+    * allow it to figure out the Writable class to use in the subclass case.
+    */
+  def sequenceFile[K, V](path: String, minSplits: Int = defaultMinSplits)
+                        (implicit km: ClassManifest[K], vm: ClassManifest[V],
+                         kcf: () => WritableConverter[K], vcf: () => WritableConverter[V])
+  : RDD[(K, V)] = {
     val kc = kcf()
     val vc = vcf()
     val format = classOf[SequenceFileInputFormat[Writable, Writable]]
     val writables = hadoopFile(path, format,
-        kc.writableClass(km).asInstanceOf[Class[Writable]],
-        vc.writableClass(vm).asInstanceOf[Class[Writable]], minSplits)
-    writables.map{case (k,v) => (kc.convert(k), vc.convert(v))}
+      kc.writableClass(km).asInstanceOf[Class[Writable]],
+      vc.writableClass(vm).asInstanceOf[Class[Writable]], minSplits)
+    writables.map { case (k, v) => (kc.convert(k), vc.convert(v)) }
   }
 
   /**
-   * Load an RDD saved as a SequenceFile containing serialized objects, with NullWritable keys and
-   * BytesWritable values that contain a serialized partition. This is still an experimental storage
-   * format and may not be supported exactly as is in future Spark releases. It will also be pretty
-   * slow if you use the default serializer (Java serialization), though the nice thing about it is
-   * that there's very little effort required to save arbitrary objects.
-   */
+    * Load an RDD saved as a SequenceFile containing serialized objects, with NullWritable keys and
+    * BytesWritable values that contain a serialized partition. This is still an experimental storage
+    * format and may not be supported exactly as is in future Spark releases. It will also be pretty
+    * slow if you use the default serializer (Java serialization), though the nice thing about it is
+    * that there's very little effort required to save arbitrary objects.
+    */
   def objectFile[T: ClassManifest](
-      path: String,
-      minSplits: Int = defaultMinSplits
-      ): RDD[T] = {
+                                    path: String,
+                                    minSplits: Int = defaultMinSplits
+                                  ): RDD[T] = {
     sequenceFile(path, classOf[NullWritable], classOf[BytesWritable], minSplits)
       .flatMap(x => Utils.deserialize[Array[T]](x._2.getBytes))
   }
 
 
   protected[spark] def checkpointFile[T: ClassManifest](
-      path: String
-    ): RDD[T] = {
+                                                         path: String
+                                                       ): RDD[T] = {
     new CheckpointRDD[T](this, path)
   }
 
@@ -407,44 +415,45 @@ class SparkContext(
   // Methods for creating shared variables
 
   /**
-   * Create an [[spark.Accumulator]] variable of a given type, which tasks can "add" values
-   * to using the `+=` method. Only the driver can access the accumulator's `value`.
-   */
+    * Create an [[spark.Accumulator]] variable of a given type, which tasks can "add" values
+    * to using the `+=` method. Only the driver can access the accumulator's `value`.
+    */
   def accumulator[T](initialValue: T)(implicit param: AccumulatorParam[T]) =
     new Accumulator(initialValue, param)
 
   /**
-   * Create an [[spark.Accumulable]] shared variable, to which tasks can add values with `+=`.
-   * Only the driver can access the accumuable's `value`.
-   * @tparam T accumulator type
-   * @tparam R type that can be added to the accumulator
-   */
+    * Create an [[spark.Accumulable]] shared variable, to which tasks can add values with `+=`.
+    * Only the driver can access the accumuable's `value`.
+    *
+    * @tparam T accumulator type
+    * @tparam R type that can be added to the accumulator
+    */
   def accumulable[T, R](initialValue: T)(implicit param: AccumulableParam[T, R]) =
     new Accumulable(initialValue, param)
 
   /**
-   * Create an accumulator from a "mutable collection" type.
-   *
-   * Growable and TraversableOnce are the standard APIs that guarantee += and ++=, implemented by
-   * standard mutable collections. So you can use this with mutable Map, Set, etc.
-   */
+    * Create an accumulator from a "mutable collection" type.
+    *
+    * Growable and TraversableOnce are the standard APIs that guarantee += and ++=, implemented by
+    * standard mutable collections. So you can use this with mutable Map, Set, etc.
+    */
   def accumulableCollection[R <% Growable[T] with TraversableOnce[T] with Serializable, T](initialValue: R) = {
-    val param = new GrowableAccumulableParam[R,T]
+    val param = new GrowableAccumulableParam[R, T]
     new Accumulable(initialValue, param)
   }
 
   /**
-   * Broadcast a read-only variable to the cluster, returning a [[spark.broadcast.Broadcast]] object for
-   * reading it in distributed functions. The variable will be sent to each cluster only once.
-   */
+    * Broadcast a read-only variable to the cluster, returning a [[spark.broadcast.Broadcast]] object for
+    * reading it in distributed functions. The variable will be sent to each cluster only once.
+    */
   def broadcast[T](value: T) = env.broadcastManager.newBroadcast[T](value, isLocal)
 
   /**
-   * Add a file to be downloaded with this Spark job on every node.
-   * The `path` passed can be either a local file, a file in HDFS (or other Hadoop-supported
-   * filesystems), or an HTTP, HTTPS or FTP URI.  To access the file in Spark jobs,
-   * use `SparkFiles.get(path)` to find its download location.
-   */
+    * Add a file to be downloaded with this Spark job on every node.
+    * The `path` passed can be either a local file, a file in HDFS (or other Hadoop-supported
+    * filesystems), or an HTTP, HTTPS or FTP URI.  To access the file in Spark jobs,
+    * use `SparkFiles.get(path)` to find its download location.
+    */
   def addFile(path: String) {
     val uri = new URI(path)
     val key = uri.getScheme match {
@@ -466,47 +475,47 @@ class SparkContext(
   }
 
   /**
-   * Return a map from the slave to the max memory available for caching and the remaining
-   * memory available for caching.
-   */
+    * Return a map from the slave to the max memory available for caching and the remaining
+    * memory available for caching.
+    */
   def getExecutorMemoryStatus: Map[String, (Long, Long)] = {
-    env.blockManager.master.getMemoryStatus.map { case(blockManagerId, mem) =>
+    env.blockManager.master.getMemoryStatus.map { case (blockManagerId, mem) =>
       (blockManagerId.ip + ":" + blockManagerId.port, mem)
     }
   }
 
   /**
-   * Return information about what RDDs are cached, if they are in mem or on disk, how much space
-   * they take, etc.
-   */
-  def getRDDStorageInfo : Array[RDDInfo] = {
+    * Return information about what RDDs are cached, if they are in mem or on disk, how much space
+    * they take, etc.
+    */
+  def getRDDStorageInfo: Array[RDDInfo] = {
     StorageUtils.rddInfoFromStorageStatus(getExecutorStorageStatus, this)
   }
 
-  def getStageInfo: Map[Stage,StageInfo] = {
+  def getStageInfo: Map[Stage, StageInfo] = {
     dagScheduler.stageToInfos
   }
 
   /**
-   * Return information about blocks stored in all of the slaves
-   */
-  def getExecutorStorageStatus : Array[StorageStatus] = {
+    * Return information about blocks stored in all of the slaves
+    */
+  def getExecutorStorageStatus: Array[StorageStatus] = {
     env.blockManager.master.getStorageStatus
   }
 
   /**
-   * Clear the job's list of files added by `addFile` so that they do not get downloaded to
-   * any new nodes.
-   */
+    * Clear the job's list of files added by `addFile` so that they do not get downloaded to
+    * any new nodes.
+    */
   def clearFiles() {
     addedFiles.clear()
   }
 
   /**
-   * Adds a JAR dependency for all tasks to be executed on this SparkContext in the future.
-   * The `path` passed can be either a local file, a file in HDFS (or other Hadoop-supported
-   * filesystems), or an HTTP, HTTPS or FTP URI.
-   */
+    * Adds a JAR dependency for all tasks to be executed on this SparkContext in the future.
+    * The `path` passed can be either a local file, a file in HDFS (or other Hadoop-supported
+    * filesystems), or an HTTP, HTTPS or FTP URI.
+    */
   def addJar(path: String) {
     val uri = new URI(path)
     val key = uri.getScheme match {
@@ -518,9 +527,9 @@ class SparkContext(
   }
 
   /**
-   * Clear the job's list of JARs added by `addJar` so that they do not get downloaded to
-   * any new nodes.
-   */
+    * Clear the job's list of JARs added by `addJar` so that they do not get downloaded to
+    * any new nodes.
+    */
   def clearJars() {
     addedJars.clear()
   }
@@ -547,10 +556,10 @@ class SparkContext(
   }
 
   /**
-   * Get Spark's home location from either a value set through the constructor,
-   * or the spark.home Java property, or the SPARK_HOME environment variable
-   * (in that order of preference). If neither of these is set, return None.
-   */
+    * Get Spark's home location from either a value set through the constructor,
+    * or the spark.home Java property, or the SPARK_HOME environment variable
+    * (in that order of preference). If neither of these is set, return None.
+    */
   private[spark] def getSparkHome(): Option[String] = {
     if (sparkHome != null) {
       Some(sparkHome)
@@ -564,17 +573,17 @@ class SparkContext(
   }
 
   /**
-   * Run a function on a given set of partitions in an RDD and pass the results to the given
-   * handler function. This is the main entry point for all actions in Spark. The allowLocal
-   * flag specifies whether the scheduler can run the computation on the driver rather than
-   * shipping it out to the cluster, for short actions like first().
-   */
+    * Run a function on a given set of partitions in an RDD and pass the results to the given
+    * handler function. This is the main entry point for all actions in Spark. The allowLocal
+    * flag specifies whether the scheduler can run the computation on the driver rather than
+    * shipping it out to the cluster, for short actions like first().
+    */
   def runJob[T, U: ClassManifest](
-      rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
-      partitions: Seq[Int],
-      allowLocal: Boolean,
-      resultHandler: (Int, U) => Unit) {
+                                   rdd: RDD[T],
+                                   func: (TaskContext, Iterator[T]) => U,
+                                   partitions: Seq[Int],
+                                   allowLocal: Boolean,
+                                   resultHandler: (Int, U) => Unit) {
     val callSite = Utils.getSparkCallSite
     logInfo("Starting job: " + callSite)
     val start = System.nanoTime
@@ -585,80 +594,78 @@ class SparkContext(
   }
 
   /**
-   * Run a function on a given set of partitions in an RDD and return the results as an array. The
-   * allowLocal flag specifies whether the scheduler can run the computation on the driver rather
-   * than shipping it out to the cluster, for short actions like first().
-   */
+    * Run a function on a given set of partitions in an RDD and return the results as an array. The
+    * allowLocal flag specifies whether the scheduler can run the computation on the driver rather
+    * than shipping it out to the cluster, for short actions like first().
+    */
   def runJob[T, U: ClassManifest](
-      rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
-      partitions: Seq[Int],
-      allowLocal: Boolean
-      ): Array[U] = {
+                                   rdd: RDD[T],
+                                   func: (TaskContext, Iterator[T]) => U,
+                                   partitions: Seq[Int],
+                                   allowLocal: Boolean
+                                 ): Array[U] = {
     val results = new Array[U](partitions.size)
     runJob[T, U](rdd, func, partitions, allowLocal, (index, res) => results(index) = res)
     results
   }
 
   /**
-   * Run a job on a given set of partitions of an RDD, but take a function of type
-   * `Iterator[T] => U` instead of `(TaskContext, Iterator[T]) => U`.
-   */
+    * Run a job on a given set of partitions of an RDD, but take a function of type
+    * `Iterator[T] => U` instead of `(TaskContext, Iterator[T]) => U`.
+    */
   def runJob[T, U: ClassManifest](
-      rdd: RDD[T],
-      func: Iterator[T] => U,
-      partitions: Seq[Int],
-      allowLocal: Boolean
-      ): Array[U] = {
+                                   rdd: RDD[T],
+                                   func: Iterator[T] => U,
+                                   partitions: Seq[Int],
+                                   allowLocal: Boolean
+                                 ): Array[U] = {
     runJob(rdd, (context: TaskContext, iter: Iterator[T]) => func(iter), partitions, allowLocal)
   }
 
   /**
-   * Run a job on all partitions in an RDD and return the results in an array.
-   */
+    * Run a job on all partitions in an RDD and return the results in an array.
+    */
   def runJob[T, U: ClassManifest](rdd: RDD[T], func: (TaskContext, Iterator[T]) => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.size, false)
   }
 
   /**
-   * Run a job on all partitions in an RDD and return the results in an array.
-   */
+    * Run a job on all partitions in an RDD and return the results in an array.
+    */
   def runJob[T, U: ClassManifest](rdd: RDD[T], func: Iterator[T] => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.size, false)
   }
 
   /**
-   * Run a job on all partitions in an RDD and pass the results to a handler function.
-   */
+    * Run a job on all partitions in an RDD and pass the results to a handler function.
+    */
   def runJob[T, U: ClassManifest](
-    rdd: RDD[T],
-    processPartition: (TaskContext, Iterator[T]) => U,
-    resultHandler: (Int, U) => Unit)
-  {
+                                   rdd: RDD[T],
+                                   processPartition: (TaskContext, Iterator[T]) => U,
+                                   resultHandler: (Int, U) => Unit) {
     runJob[T, U](rdd, processPartition, 0 until rdd.partitions.size, false, resultHandler)
   }
 
   /**
-   * Run a job on all partitions in an RDD and pass the results to a handler function.
-   */
+    * Run a job on all partitions in an RDD and pass the results to a handler function.
+    */
   def runJob[T, U: ClassManifest](
-      rdd: RDD[T],
-      processPartition: Iterator[T] => U,
-      resultHandler: (Int, U) => Unit)
-  {
+                                   rdd: RDD[T],
+                                   processPartition: Iterator[T] => U,
+                                   resultHandler: (Int, U) => Unit) {
     val processFunc = (context: TaskContext, iter: Iterator[T]) => processPartition(iter)
     runJob[T, U](rdd, processFunc, 0 until rdd.partitions.size, false, resultHandler)
   }
 
   /**
-   * Run a job that can return approximate results.
-   */
+    * Run a job that can return approximate results.
+    */
   def runApproximateJob[T, U, R](
-      rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
-      evaluator: ApproximateEvaluator[U, R],
-      timeout: Long
-      ): PartialResult[R] = {
+                                  rdd: RDD[T],
+                                  func: (TaskContext, Iterator[T]) => U,
+                                  evaluator: ApproximateEvaluator[U, R],
+                                  timeout: Long
+                                ): PartialResult[R] = {
     val callSite = Utils.getSparkCallSite
     logInfo("Starting job: " + callSite)
     val start = System.nanoTime
@@ -668,21 +675,21 @@ class SparkContext(
   }
 
   /**
-   * Clean a closure to make it ready to serialized and send to tasks
-   * (removes unreferenced variables in $outer's, updates REPL variables)
-   */
+    * Clean a closure to make it ready to serialized and send to tasks
+    * (removes unreferenced variables in $outer's, updates REPL variables)
+    */
   private[spark] def clean[F <: AnyRef](f: F): F = {
     ClosureCleaner.clean(f)
     return f
   }
 
   /**
-   * Set the directory under which RDDs are going to be checkpointed. The directory must
-   * be a HDFS path if running on a cluster. If the directory does not exist, it will
-   * be created. If the directory exists and useExisting is set to true, then the
-   * exisiting directory will be used. Otherwise an exception will be thrown to
-   * prevent accidental overriding of checkpoint files in the existing directory.
-   */
+    * Set the directory under which RDDs are going to be checkpointed. The directory must
+    * be a HDFS path if running on a cluster. If the directory does not exist, it will
+    * be created. If the directory exists and useExisting is set to true, then the
+    * exisiting directory will be used. Otherwise an exception will be thrown to
+    * prevent accidental overriding of checkpoint files in the existing directory.
+    */
   def setCheckpointDir(dir: String, useExisting: Boolean = false) {
     val path = new Path(dir)
     val fs = path.getFileSystem(new Configuration())
@@ -718,28 +725,32 @@ class SparkContext(
 }
 
 /**
- * The SparkContext object contains a number of implicit conversions and parameters for use with
- * various Spark features.
- */
+  * The SparkContext object contains a number of implicit conversions and parameters for use with
+  * various Spark features.
+  */
 object SparkContext {
 
   implicit object DoubleAccumulatorParam extends AccumulatorParam[Double] {
     def addInPlace(t1: Double, t2: Double): Double = t1 + t2
+
     def zero(initialValue: Double) = 0.0
   }
 
   implicit object IntAccumulatorParam extends AccumulatorParam[Int] {
     def addInPlace(t1: Int, t2: Int): Int = t1 + t2
+
     def zero(initialValue: Int) = 0
   }
 
   implicit object LongAccumulatorParam extends AccumulatorParam[Long] {
     def addInPlace(t1: Long, t2: Long) = t1 + t2
+
     def zero(initialValue: Long) = 0l
   }
 
   implicit object FloatAccumulatorParam extends AccumulatorParam[Float] {
     def addInPlace(t1: Float, t2: Float) = t1 + t2
+
     def zero(initialValue: Float) = 0f
   }
 
@@ -748,12 +759,12 @@ object SparkContext {
   implicit def rddToPairRDDFunctions[K: ClassManifest, V: ClassManifest](rdd: RDD[(K, V)]) =
     new PairRDDFunctions(rdd)
 
-  implicit def rddToSequenceFileRDDFunctions[K <% Writable: ClassManifest, V <% Writable: ClassManifest](
-      rdd: RDD[(K, V)]) =
+  implicit def rddToSequenceFileRDDFunctions[K <% Writable : ClassManifest, V <% Writable : ClassManifest](
+                                                                                                            rdd: RDD[(K, V)]) =
     new SequenceFileRDDFunctions(rdd)
 
-  implicit def rddToOrderedRDDFunctions[K <% Ordered[K]: ClassManifest, V: ClassManifest](
-      rdd: RDD[(K, V)]) =
+  implicit def rddToOrderedRDDFunctions[K <% Ordered[K] : ClassManifest, V: ClassManifest](
+                                                                                            rdd: RDD[(K, V)]) =
     new OrderedRDDFunctions(rdd)
 
   implicit def doubleRDDToDoubleRDDFunctions(rdd: RDD[Double]) = new DoubleRDDFunctions(rdd)
@@ -771,21 +782,21 @@ object SparkContext {
 
   implicit def doubleToDoubleWritable(d: Double) = new DoubleWritable(d)
 
-  implicit def boolToBoolWritable (b: Boolean) = new BooleanWritable(b)
+  implicit def boolToBoolWritable(b: Boolean) = new BooleanWritable(b)
 
-  implicit def bytesToBytesWritable (aob: Array[Byte]) = new BytesWritable(aob)
+  implicit def bytesToBytesWritable(aob: Array[Byte]) = new BytesWritable(aob)
 
   implicit def stringToText(s: String) = new Text(s)
 
-  private implicit def arrayToArrayWritable[T <% Writable: ClassManifest](arr: Traversable[T]): ArrayWritable = {
+  private implicit def arrayToArrayWritable[T <% Writable : ClassManifest](arr: Traversable[T]): ArrayWritable = {
     def anyToWritable[U <% Writable](u: U): Writable = u
 
     new ArrayWritable(classManifest[T].erasure.asInstanceOf[Class[Writable]],
-        arr.map(x => anyToWritable(x)).toArray)
+      arr.map(x => anyToWritable(x)).toArray)
   }
 
   // Helper objects for converting common types to Writable
-  private def simpleWritableConverter[T, W <: Writable: ClassManifest](convert: W => T) = {
+  private def simpleWritableConverter[T, W <: Writable : ClassManifest](convert: W => T) = {
     val wClass = classManifest[W].erasure.asInstanceOf[Class[W]]
     new WritableConverter[T](_ => wClass, x => convert(x.asInstanceOf[W]))
   }
@@ -808,9 +819,9 @@ object SparkContext {
     new WritableConverter[T](_.erasure.asInstanceOf[Class[T]], _.asInstanceOf[T])
 
   /**
-   * Find the JAR from which a given class was loaded, to make it easy for users to pass
-   * their JARs to SparkContext
-   */
+    * Find the JAR from which a given class was loaded, to make it easy for users to pass
+    * their JARs to SparkContext
+    */
   def jarOfClass(cls: Class[_]): Seq[String] = {
     val uri = cls.getResource("/" + cls.getName.replace('.', '/') + ".class")
     if (uri != null) {
@@ -832,13 +843,13 @@ object SparkContext {
 
 
 /**
- * A class encapsulating how to convert some type T to Writable. It stores both the Writable class
- * corresponding to T (e.g. IntWritable for Int) and a function for doing the conversion.
- * The getter for the writable class takes a ClassManifest[T] in case this is a generic object
- * that doesn't know the type of T when it is created. This sounds strange but is necessary to
- * support converting subclasses of Writable to themselves (writableWritableConverter).
- */
+  * A class encapsulating how to convert some type T to Writable. It stores both the Writable class
+  * corresponding to T (e.g. IntWritable for Int) and a function for doing the conversion.
+  * The getter for the writable class takes a ClassManifest[T] in case this is a generic object
+  * that doesn't know the type of T when it is created. This sounds strange but is necessary to
+  * support converting subclasses of Writable to themselves (writableWritableConverter).
+  */
 private[spark] class WritableConverter[T](
-    val writableClass: ClassManifest[T] => Class[_ <: Writable],
-    val convert: Writable => T)
+                                           val writableClass: ClassManifest[T] => Class[_ <: Writable],
+                                           val convert: Writable => T)
   extends Serializable
