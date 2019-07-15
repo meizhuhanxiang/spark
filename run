@@ -166,4 +166,8 @@ else
   EXTRA_ARGS="$JAVA_OPTS"
 fi
 
-exec "$RUNNER" -cp "$CLASSPATH" $EXTRA_ARGS "$@"
+echo "$RUNNER"
+echo "$CLASSPATH"
+echo $EXTRA_ARGS
+params='-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005'
+exec "$RUNNER" -cp "$CLASSPATH" $EXTRA_ARGS $params "$@"
