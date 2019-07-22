@@ -169,5 +169,5 @@ fi
 echo "$RUNNER"
 echo "$CLASSPATH"
 echo $EXTRA_ARGS
-params=''
+params='-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005'
 exec "$RUNNER" -cp "$CLASSPATH" $EXTRA_ARGS $params "$@"
