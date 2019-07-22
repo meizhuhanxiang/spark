@@ -14,5 +14,8 @@ object Test{
     var rrducerdd = reducerdd.reduceByKey(_ + _)
     var res = rrducerdd.collect()
     println(res)
+    while (true){
+      Thread.sleep(10);
+    }
   }
 }

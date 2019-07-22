@@ -123,6 +123,7 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
   val taskIdsOnSlave = new HashMap[String, HashSet[String]]
 
   override def start() {
+    // 从配置中获取spark开头的配置项，加入到properties中
     val properties = new ArrayBuffer[(String, String)]
     val iterator = System.getProperties.entrySet.iterator
     while (iterator.hasNext) {
@@ -132,6 +133,7 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
         properties += ((key, value))
       }
     }
+    // 初始化一个driver端的driverActor，actor默认名字为StandaloneScheduler
     driverActor = actorSystem.actorOf(
       Props(new DriverActor(properties)), name = StandaloneSchedulerBackend.ACTOR_NAME)
   }
