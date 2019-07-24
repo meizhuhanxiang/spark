@@ -135,6 +135,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
    * that tasks are balanced across the cluster.
    */
   def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = {
+    // WorkerOffer: 已经注册了的executer id, host, 核数
     synchronized {
       SparkEnv.set(sc.env)
       // Mark each slave as alive and remember its hostname
@@ -155,6 +156,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
           for (i <- 0 until offers.size) {
             val execId = offers(i).executorId
             val host = offers(i).hostname
+            // TaskSetManager.slaveOffer: TaskDescription，包含taskid, executer id, task name和一个序列化的任务
             manager.slaveOffer(execId, host, availableCpus(i)) match {
               case Some(task) =>
                 tasks(i) += task
@@ -164,7 +166,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
                 taskIdToExecutorId(tid) = execId
                 activeExecutorIds += execId
                 executorsByHost(host) += execId
-                availableCpus(i) -= 1
+                availableCpus(i) -= 1  // 每有一个task  cpu减一，印证了一个task 一个cpu
                 launchedTask = true
 
               case None => {}

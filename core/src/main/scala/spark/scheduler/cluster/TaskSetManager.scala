@@ -210,7 +210,7 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
           val task = tasks(index)
           val taskId = sched.newTaskId()
           // Figure out whether this should count as a preferred launch
-          val preferred = isPreferredLocation(task, host)
+          val preferred = isPreferredLocation(task, host)  // 判断任务是否有本地化
           val prefStr = if (preferred) {
             "preferred"
           } else {
@@ -228,12 +228,14 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
           }
           // Serialize and return the task
           val startTime = System.currentTimeMillis
+          // 序列化task，files，jars
           val serializedTask = Task.serializeWithDependencies(
             task, sched.sc.addedFiles, sched.sc.addedJars, ser)
           val timeTaken = System.currentTimeMillis - startTime
           logInfo("Serialized task %s:%d as %d bytes in %d ms".format(
             taskSet.id, index, serializedTask.limit, timeTaken))
           val taskName = "task %s:%d".format(taskSet.id, index)
+          // 返回一个TaskDescription，包含taskid, executer id, task name和一个序列化的任务
           return Some(new TaskDescription(taskId, execId, taskName, serializedTask))
         }
         case _ =>
