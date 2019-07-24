@@ -15,14 +15,16 @@ import akka.actor.Terminated
 import akka.dispatch.Await
 
 /**
- * The main class used to talk to a Spark deploy cluster. Takes a master URL, an app description,
- * and a listener for cluster events, and calls back the listener when various events occur.
- */
+  * The main class used to talk to a Spark deploy cluster. Takes a master URL, an app description,
+  * and a listener for cluster events, and calls back the listener when various events occur.
+  * 这是一个和集群交互的主要actor类，包含如下内容：master url， 应用描述，用于监听集群事件的监听器，当有不同的事件发生的时候
+  * 回调监听器，被 SparkDeploySchedulerBackend的start 调用
+  */
 private[spark] class Client(
-    actorSystem: ActorSystem,
-    masterUrl: String,
-    appDescription: ApplicationDescription,
-    listener: ClientListener)
+                             actorSystem: ActorSystem, //actor主根
+                             masterUrl: String, // 指向master的url  spark://xxxx
+                             appDescription: ApplicationDescription, //应用描述 应用名称，核数，每个节点内存，执行命令，以及spark的跟目录
+                             listener: ClientListener) //监听器
   extends Logging {
 
   var actor: ActorRef = null
@@ -31,16 +33,16 @@ private[spark] class Client(
   class ClientActor extends Actor with Logging {
     var master: ActorRef = null
     var masterAddress: Address = null
-    var alreadyDisconnected = false  // To avoid calling listener.disconnected() multiple times
+    var alreadyDisconnected = false // To avoid calling listener.disconnected() multiple times
 
-    override def preStart() {
+    override def preStart() { // actor实例化的时候就会执行
       logInfo("Connecting to master " + masterUrl)
       try {
-        master = context.actorFor(Master.toAkkaUrl(masterUrl))
+        master = context.actorFor(Master.toAkkaUrl(masterUrl)) //获得到master的actor通信实例
         masterAddress = master.path.address
-        master ! RegisterApplication(appDescription)
+        master ! RegisterApplication(appDescription) //通知master，现在有一个计算任务app要注册
         context.system.eventStream.subscribe(self, classOf[RemoteClientLifeCycleEvent])
-        context.watch(master)  // Doesn't work with remote actors, but useful for testing
+        context.watch(master) // Doesn't work with remote actors, but useful for testing
       } catch {
         case e: Exception =>
           logError("Failed to connect to master", e)
@@ -50,7 +52,7 @@ private[spark] class Client(
     }
 
     override def receive = {
-      case RegisteredApplication(appId_) =>
+      case RegisteredApplication(appId_) => // app实例注册成功
         appId = appId_
         listener.connected(appId)
 
@@ -94,8 +96,8 @@ private[spark] class Client(
     }
 
     /**
-     * Notify the listener that we disconnected, if we hadn't already done so before.
-     */
+      * Notify the listener that we disconnected, if we hadn't already done so before.
+      */
     def markDisconnected() {
       if (!alreadyDisconnected) {
         listener.disconnected()
@@ -106,7 +108,7 @@ private[spark] class Client(
 
   def start() {
     // Just launch an actor; it will call back into the listener.
-    actor = actorSystem.actorOf(Props(new ClientActor))
+    actor = actorSystem.actorOf(Props(new ClientActor)) // 被 SparkDeploySchedulerBackend的start 调用
   }
 
   def stop() {
@@ -116,7 +118,7 @@ private[spark] class Client(
         val future = actor.ask(StopClient)(timeout)
         Await.result(future, timeout)
       } catch {
-        case e: AskTimeoutException =>  // Ignore it, maybe master went away
+        case e: AskTimeoutException => // Ignore it, maybe master went away
       }
       actor = null
     }

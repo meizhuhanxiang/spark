@@ -15,15 +15,23 @@ import spark.TaskState.TaskState
 import java.nio.ByteBuffer
 
 /**
- * Schedules the tasks within a single TaskSet in the ClusterScheduler.
- */
+  * Schedules the tasks within a single TaskSet in the ClusterScheduler.
+  */
 private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSet) extends Logging {
 
   // Maximum time to wait to run a task in a preferred location (in ms)
+  // 存在如下数据本地化基本：
+  // PROCESS_LOCAL：进程本地化：task要计算的数据在同一个Executor中
+  // NODE_LOCAL: 节点本地化：速度比 PROCESS_LOCAL 稍慢，因为数据需要在不同进程之间传递或从文件中读,HDFS，那么最好级别就是NODE_LOCAL
+  // NODE_PREF: 没有最佳位置这一说，数据从哪里访问都一样快，不需要位置优先
+  // RACK_LOCAL: 机架本地化，数据在同一机架的不同节点上
+  // 会首先会用PROCESS_LOCAL发送task到对应executer，如果等待3秒后无反应重试5次还是无法执行，那么降低到NODE_LOCAL,
+  // 去其他worker的executer中执行
+  // https://www.cnblogs.com/jxhd1/p/6702224.html?utm_source=itdadao&utm_medium=referral
   val LOCALITY_WAIT = System.getProperty("spark.locality.wait", "3000").toLong
 
   // CPUs to request per task
-  val CPUS_PER_TASK = System.getProperty("spark.task.cpus", "1").toDouble
+  val CPUS_PER_TASK = System.getProperty("spark.task.cpus", "1").toDouble // 默认一个task 1核
 
   // Maximum times a task is allowed to fail before failing the job
   val MAX_TASK_FAILURES = 4
@@ -54,6 +62,10 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
   // back at the head of the stack. They are also only cleaned up lazily;
   // when a task is launched, it remains in all the pending lists except
   // the one that it was launched from, but gets removed from them later.
+  //  每个节点的待处理任务列表。 这些集合实际上被视为堆栈，其中新任务被添加到ArrayBuffer的末尾并从末尾删除。
+  //  这使得检测重复失败的任务变得更快，因为无论何时任务失败，都会放置
+  //  回到堆栈的头部。 它们也只是懒洋洋地清理干净;
+  //  启动任务时，它将保留在除启动任务之外的所有待处理列表中，但稍后会从中删除。
   val pendingTasksForHost = new HashMap[String, ArrayBuffer[Int]]
 
   // List containing pending tasks with no locality preferences
@@ -138,11 +150,11 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
     val hostsAlive = sched.hostsAlive
     speculatableTasks.retain(index => !finished(index)) // Remove finished tasks from set
     val localTask = speculatableTasks.find {
-        index =>
-          val locations = tasks(index).preferredLocations.toSet & hostsAlive
-          val attemptLocs = taskAttempts(index).map(_.host)
-          (locations.size == 0 || locations.contains(host)) && !attemptLocs.contains(host)
-      }
+      index =>
+        val locations = tasks(index).preferredLocations.toSet & hostsAlive
+        val attemptLocs = taskAttempts(index).map(_.host)
+        (locations.size == 0 || locations.contains(host)) && !attemptLocs.contains(host)
+    }
     if (localTask != None) {
       speculatableTasks -= localTask.get
       return localTask
@@ -299,7 +311,7 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
 
           case taskResultTooBig: TaskResultTooBigFailure =>
             logInfo("Loss was due to task %s result exceeding Akka frame size;" +
-                    "aborting job".format(tid))
+              "aborting job".format(tid))
             abort("Task %s result exceeded Akka frame size".format(tid))
             return
 
@@ -397,12 +409,12 @@ private[spark] class TaskSetManager(sched: ClusterScheduler, val taskSet: TaskSe
   }
 
   /**
-   * Check for tasks to be speculated and return true if there are any. This is called periodically
-   * by the ClusterScheduler.
-   *
-   * TODO: To make this scale to large jobs, we need to maintain a list of running tasks, so that
-   * we don't scan the whole task set. It might also help to make this sorted by launch time.
-   */
+    * Check for tasks to be speculated and return true if there are any. This is called periodically
+    * by the ClusterScheduler.
+    *
+    * TODO: To make this scale to large jobs, we need to maintain a list of running tasks, so that
+    * we don't scan the whole task set. It might also help to make this sorted by launch time.
+    */
   def checkSpeculatableTasks(): Boolean = {
     // Can't speculate if we only have one task, or if all tasks have finished.
     if (numTasks == 1 || tasksFinished == numTasks) {

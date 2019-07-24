@@ -23,13 +23,14 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
   // Use an atomic variable to track total number of cores in the cluster for simplicity and speed
   var totalCoreCount = new AtomicInteger(0)
 
+  //
   class DriverActor(sparkProperties: Seq[(String, String)]) extends Actor {
-    val executorActor = new HashMap[String, ActorRef]
-    val executorAddress = new HashMap[String, Address]
-    val executorHost = new HashMap[String, String]
-    val freeCores = new HashMap[String, Int]
-    val actorToExecutorId = new HashMap[ActorRef, String]
-    val addressToExecutorId = new HashMap[Address, String]
+    val executorActor = new HashMap[String, ActorRef]  // 记录每个executer id 对应的actor
+    val executorAddress = new HashMap[String, Address] // 记录每个executer id  对应的akka通信地址
+    val executorHost = new HashMap[String, String] // 记录每一个executer id对应的ip地址
+    val freeCores = new HashMap[String, Int]  // 记录每一个executer id对应的核数
+    val actorToExecutorId = new HashMap[ActorRef, String]  //构造一一映射
+    val addressToExecutorId = new HashMap[Address, String] // 构造一一映射
 
     override def preStart() {
       // Listen for remote client disconnection events, since they don't go through Akka's watch()
@@ -38,12 +39,12 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
 
     def receive = {
       case RegisterExecutor(executorId, host, cores) =>
-        if (executorActor.contains(executorId)) {
+        if (executorActor.contains(executorId)) { // 判断是为重复注册
           sender ! RegisterExecutorFailed("Duplicate executor ID: " + executorId)
         } else {
           logInfo("Registered executor: " + sender + " with ID " + executorId)
-          sender ! RegisteredExecutor(sparkProperties)
-          context.watch(sender)
+          sender ! RegisteredExecutor(sparkProperties)  // 将自定义的spark配置信息反馈给executer
+          context.watch(sender) //将executer actor纳入到本acter系统的监管范围
           executorActor(executorId) = sender
           executorHost(executorId) = host
           freeCores(executorId) = cores
@@ -51,7 +52,7 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
           actorToExecutorId(sender) = executorId
           addressToExecutorId(sender.path.address) = executorId
           totalCoreCount.addAndGet(cores)
-          makeOffers()
+          makeOffers() // 尝试去执行，如果有任务的话
         }
 
       case StatusUpdate(executorId, taskId, state, data) =>
@@ -82,7 +83,7 @@ class StandaloneSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Actor
         addressToExecutorId.get(address).foreach(removeExecutor(_, "remote Akka client shutdown"))
     }
 
-    // Make fake resource offers on all executors
+    // Make fake resource offers on all executors 为所有的executors提供虚拟资源
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
         executorHost.toArray.map {case (id, host) => new WorkerOffer(id, host, freeCores(id))}))

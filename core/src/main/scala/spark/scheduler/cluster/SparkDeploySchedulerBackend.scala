@@ -6,17 +6,17 @@ import spark.deploy.{Command, ApplicationDescription}
 import scala.collection.mutable.HashMap
 
 private[spark] class SparkDeploySchedulerBackend(
-    scheduler: ClusterScheduler,
-    sc: SparkContext,
-    master: String,
-    appName: String)
+                                                  scheduler: ClusterScheduler,
+                                                  sc: SparkContext,
+                                                  master: String,
+                                                  appName: String)
   extends StandaloneSchedulerBackend(scheduler, sc.env.actorSystem)
-  with ClientListener
-  with Logging {
+    with ClientListener
+    with Logging {
 
   var client: Client = null
   var stopping = false
-  var shutdownCallback : (SparkDeploySchedulerBackend) => Unit = _
+  var shutdownCallback: (SparkDeploySchedulerBackend) => Unit = _
 
   val maxCores = System.getProperty("spark.cores.max", Int.MaxValue.toString).toInt
 
@@ -27,15 +27,15 @@ private[spark] class SparkDeploySchedulerBackend(
     // driver端的actor url
     val driverUrl = "akka://spark@%s:%s/user/%s".format(
       System.getProperty("spark.driver.host"), System.getProperty("spark.driver.port"),
-      StandaloneSchedulerBackend.ACTOR_NAME)
+      StandaloneSchedulerBackend.ACTOR_NAME) // actor_name: StandaloneScheduler
     val args = Seq(driverUrl, "{{EXECUTOR_ID}}", "{{HOSTNAME}}", "{{CORES}}")
     val command = Command("spark.executor.StandaloneExecutorBackend", args, sc.executorEnvs)
     val sparkHome = sc.getSparkHome().getOrElse(
       throw new IllegalArgumentException("must supply spark home for spark standalone"))
     val appDesc = new ApplicationDescription(appName, maxCores, executorMemory, command, sparkHome)
 
-    client = new Client(sc.env.actorSystem, master, appDesc, this)
-    client.start()
+    client = new Client(sc.env.actorSystem, master, appDesc, this) // 实例化和master通信的actor
+    client.start() //实例化actor，并调用他的preStart向master注册appDesc
   }
 
   override def stop() {
@@ -60,7 +60,7 @@ private[spark] class SparkDeploySchedulerBackend(
 
   override def executorAdded(executorId: String, workerId: String, host: String, cores: Int, memory: Int) {
     logInfo("Granted executor ID %s on host %s with %d cores, %s RAM".format(
-       executorId, host, cores, Utils.memoryMegabytesToString(memory)))
+      executorId, host, cores, Utils.memoryMegabytesToString(memory)))
   }
 
   override def executorRemoved(executorId: String, message: String, exitStatus: Option[Int]) {

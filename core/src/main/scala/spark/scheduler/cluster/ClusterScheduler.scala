@@ -116,7 +116,7 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
       }
       hasReceivedTask = true;
     }
-    backend.reviveOffers()
+    backend.reviveOffers()  //执行任务调度  backend是SparkDeploySchedulerBackend实例
   }
 
   def taskSetFinished(manager: TaskSetManager) {
@@ -145,8 +145,9 @@ private[spark] class ClusterScheduler(val sc: SparkContext)
         }
       }
       // Build a list of tasks to assign to each slave
+      // 就只在这里为每个cup 核分配一个task tasks为Seq[ArrayBuffer[TaskDescription]]
       val tasks = offers.map(o => new ArrayBuffer[TaskDescription](o.cores))
-      val availableCpus = offers.map(o => o.cores).toArray
+      val availableCpus = offers.map(o => o.cores).toArray // 每个executer上的可用核数Array(xx,xx,xx,xx)
       var launchedTask = false
       for (manager <- activeTaskSetsQueue.sortBy(m => (m.taskSet.priority, m.taskSet.stageId))) {
         do {

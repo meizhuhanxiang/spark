@@ -7,7 +7,7 @@ class TestCluster {
 }
 object TestCluster{
   def main(args: Array[String]): Unit = {
-    var sc = new SparkContext("spark://127.0.0.1:7077", "Spark shell")
+    var sc = new SparkContext("spark://bdp-dc:7077", "Spark shell")
     var rdd = sc.parallelize(1 to 8, 4)
     var pairdd = rdd.map(x => (x, x * x))
     var reducerdd = pairdd.reduceByKey(_ + _)
