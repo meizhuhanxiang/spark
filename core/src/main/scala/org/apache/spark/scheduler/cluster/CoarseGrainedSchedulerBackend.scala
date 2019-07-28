@@ -135,6 +135,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
     }
 
     // Make fake resource offers on all executors
+    // 在所有的executer上建立虚拟资源
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
         executorHost.toArray.map { case (id, host) => new WorkerOffer(id, host, freeCores(id)) }))

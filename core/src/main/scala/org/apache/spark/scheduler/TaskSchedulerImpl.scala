@@ -227,6 +227,10 @@ private[spark] class TaskSchedulerImpl(
     * Called by cluster manager to offer resources on slaves. We respond by asking our active task
     * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
     * that tasks are balanced across the cluster.
+    * 由 cluster manager调用为slave提供资源。 我们通过按优先顺序询问我们的活动任务集来执行任务。
+    * 我们以轮询的方式为每个节点分配任务，以便使整个群集中任务得到均衡分配。
+    * WorkerOffer：executorId, host, freeCores
+    * TaskDescription:taskId, executorId, taskName, index, _serializedTask(被序列号的任务)
     */
   def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = synchronized {
     SparkEnv.set(sc.env)
@@ -241,8 +245,10 @@ private[spark] class TaskSchedulerImpl(
     }
 
     // Randomly shuffle offers to avoid always placing tasks on the same set of workers.
+    // 随机打散WorkerOffer
     val shuffledOffers = Random.shuffle(offers)
     // Build a list of tasks to assign to each worker.
+    // 构建要分配给每个工作人员的任务列表, 是freeCores个的任务列表
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
     val sortedTaskSets = rootPool.getSortedTaskSetQueue
