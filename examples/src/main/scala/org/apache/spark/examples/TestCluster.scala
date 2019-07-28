@@ -9,7 +9,7 @@ import org.apache.spark.{SparkConf, SparkContext}
 object TestCluster {
   def main(args: Array[String]): Unit = {
     val sparkConf = new SparkConf().setAppName("TestCluster")
-    sparkConf.setMaster("spark://localhost:7077")
+    sparkConf.setMaster("spark://bdp-dc-001:7077")
     val sc = new SparkContext(sparkConf)
     var rdd = sc.parallelize(1 to 8, 1)
     val pairdd = rdd.map(x => (x, x))
