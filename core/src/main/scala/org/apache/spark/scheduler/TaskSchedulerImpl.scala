@@ -34,26 +34,40 @@ import org.apache.spark.scheduler.SchedulingMode.SchedulingMode
 import org.apache.spark.util.Utils
 
 /**
- * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
- * It can also work with a local setup by using a LocalBackend and setting isLocal to true.
- * It handles common logic, like determining a scheduling order across jobs, waking up to launch
- * speculative tasks, etc.
- *
- * Clients should first call initialize() and start(), then submit task sets through the
- * runTasks method.
- *
- * THREADING: SchedulerBackends and task-submitting clients can call this class from multiple
- * threads, so it needs locks in public API methods to maintain its state. In addition, some
- * SchedulerBackends synchronize on themselves when they want to send events here, and then
- * acquire a lock on us, so we need to make sure that we don't try to lock the backend while
- * we are holding a lock on ourselves.
- */
+  * Schedules tasks for multiple types of clusters by acting through a SchedulerBackend.
+  * It can also work with a local setup by using a LocalBackend and setting isLocal to true.
+  * It handles common logic, like determining a scheduling order across jobs, waking up to launch
+  * speculative tasks, etc.
+  *
+  * Clients should first call initialize() and start(), then submit task sets through the
+  * runTasks method.
+  *
+  * THREADING: SchedulerBackends and task-submitting clients can call this class from multiple
+  * threads, so it needs locks in public API methods to maintain its state. In addition, some
+  * SchedulerBackends synchronize on themselves when they want to send events here, and then
+  * acquire a lock on us, so we need to make sure that we don't try to lock the backend while
+  * we are holding a lock on ourselves.
+  * 通过SchedulerBackend调度多种类型集群的任务。它还可以通过使用LocalBackend并将isLocal设置为true来处理本地设置。
+  * 它处理常见逻辑，如确定跨作业的调度顺序，唤醒以启动推测任务 客户端应首先调用initialize（）和start（），
+  * 然后通过runTasks方法提交任务集.THREADING：SchedulerBackends和任务提交客户端可以从多个线程调用此类，
+  * 因此需要锁定公共API方法来维护 它的国家。 另外，一些SchedulerBackends在他们想要在这里发送事件时自己同步，
+  * 然后锁定我们，所以我们需要确保在我们自己锁定时不会尝试锁定后端。
+  * 继承抽象类TaskScheduler，需要实现如下方法
+  * def rootPool: Pool
+  * def schedulingMode: SchedulingMode
+  * def start(): Unit
+  * def postStartHook() { }
+  * def stop(): Unit
+  * def submitTasks(taskSet: TaskSet): Unit
+  * def cancelTasks(stageId: Int, interruptThread: Boolean)
+  * def setDAGScheduler(dagScheduler: DAGScheduler): Unit
+  * def defaultParallelism(): Int
+  */
 private[spark] class TaskSchedulerImpl(
-    val sc: SparkContext,
-    val maxTaskFailures: Int,
-    isLocal: Boolean = false)
-  extends TaskScheduler with Logging
-{
+                                        val sc: SparkContext,
+                                        val maxTaskFailures: Int,
+                                        isLocal: Boolean = false)
+  extends TaskScheduler with Logging {
   def this(sc: SparkContext) = this(sc, sc.conf.getInt("spark.task.maxFailures", 4))
 
   val conf = sc.conf
@@ -100,6 +114,7 @@ private[spark] class TaskSchedulerImpl(
   var schedulableBuilder: SchedulableBuilder = null
   var rootPool: Pool = null
   // default scheduler is FIFO
+  // schedulingMode 默认为INFO
   private val schedulingModeConf = conf.get("spark.scheduler.mode", "FIFO")
   val schedulingMode: SchedulingMode = try {
     SchedulingMode.withName(schedulingModeConf.toUpperCase)
@@ -118,6 +133,11 @@ private[spark] class TaskSchedulerImpl(
   def initialize(backend: SchedulerBackend) {
     this.backend = backend
     // temporarily set rootPool name to empty
+    // TaskScheduler支持两种调度策略，一种是FIFO，
+    // 也是默认的调度策略，另一种是FAIR。在TaskScheduler初始化过程中会实例化rootPool，
+    // 表示树的根节点，是Pool类型。如果是采用FIFO调度策略，
+    // 则直接简单地将TaskSetManager按照先来先到的方式入队，
+    // 出队时直接拿出最先进队的TaskSetManage
     rootPool = new Pool("", schedulingMode, 0, 0)
     schedulableBuilder = {
       schedulingMode match {
@@ -139,8 +159,10 @@ private[spark] class TaskSchedulerImpl(
       logInfo("Starting speculative execution thread")
       import sc.env.actorSystem.dispatcher
       sc.env.actorSystem.scheduler.schedule(SPECULATION_INTERVAL milliseconds,
-            SPECULATION_INTERVAL milliseconds) {
-        Utils.tryOrExit { checkSpeculatableTasks() }
+        SPECULATION_INTERVAL milliseconds) {
+        Utils.tryOrExit {
+          checkSpeculatableTasks()
+        }
       }
     }
   }
@@ -190,10 +212,10 @@ private[spark] class TaskSchedulerImpl(
   }
 
   /**
-   * Called to indicate that all task attempts (including speculated tasks) associated with the
-   * given TaskSetManager have completed, so state associated with the TaskSetManager should be
-   * cleaned up.
-   */
+    * Called to indicate that all task attempts (including speculated tasks) associated with the
+    * given TaskSetManager have completed, so state associated with the TaskSetManager should be
+    * cleaned up.
+    */
   def taskSetFinished(manager: TaskSetManager): Unit = synchronized {
     activeTaskSets -= manager.taskSet.id
     manager.parent.removeSchedulable(manager)
@@ -202,10 +224,10 @@ private[spark] class TaskSchedulerImpl(
   }
 
   /**
-   * Called by cluster manager to offer resources on slaves. We respond by asking our active task
-   * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
-   * that tasks are balanced across the cluster.
-   */
+    * Called by cluster manager to offer resources on slaves. We respond by asking our active task
+    * sets for tasks in order of priority. We fill each node with tasks in a round-robin manner so
+    * that tasks are balanced across the cluster.
+    */
   def resourceOffers(offers: Seq[WorkerOffer]): Seq[Seq[TaskDescription]] = synchronized {
     SparkEnv.set(sc.env)
 
@@ -247,7 +269,7 @@ private[spark] class TaskSchedulerImpl(
               activeExecutorIds += execId
               executorsByHost(host) += execId
               availableCpus(i) -= CPUS_PER_TASK
-              assert (availableCpus(i) >= 0)
+              assert(availableCpus(i) >= 0)
               launchedTask = true
             }
           }
@@ -291,8 +313,8 @@ private[spark] class TaskSchedulerImpl(
           case None =>
             logError(
               ("Ignoring update with state %s for TID %s because its task set is gone (this is " +
-               "likely the result of receiving duplicate task finished status updates)")
-              .format(state, tid))
+                "likely the result of receiving duplicate task finished status updates)")
+                .format(state, tid))
         }
       } catch {
         case e: Exception => logError("Exception in statusUpdate", e)
@@ -310,17 +332,17 @@ private[spark] class TaskSchedulerImpl(
   }
 
   def handleSuccessfulTask(
-    taskSetManager: TaskSetManager,
-    tid: Long,
-    taskResult: DirectTaskResult[_]) = synchronized {
+                            taskSetManager: TaskSetManager,
+                            tid: Long,
+                            taskResult: DirectTaskResult[_]) = synchronized {
     taskSetManager.handleSuccessfulTask(tid, taskResult)
   }
 
   def handleFailedTask(
-    taskSetManager: TaskSetManager,
-    tid: Long,
-    taskState: TaskState,
-    reason: TaskEndReason) = synchronized {
+                        taskSetManager: TaskSetManager,
+                        tid: Long,
+                        taskState: TaskState,
+                        reason: TaskEndReason) = synchronized {
     taskSetManager.handleFailedTask(tid, taskState, reason)
     if (!taskSetManager.isZombie && taskState != TaskState.KILLED) {
       // Need to revive offers again now that the task set manager state has been updated to
@@ -386,11 +408,11 @@ private[spark] class TaskSchedulerImpl(
         removeExecutor(executorId)
         failedExecutor = Some(executorId)
       } else {
-         // We may get multiple executorLost() calls with different loss reasons. For example, one
-         // may be triggered by a dropped connection from the slave while another may be a report
-         // of executor termination from Mesos. We produce log messages for both so we eventually
-         // report the termination reason.
-         logError("Lost an executor " + executorId + " (already removed): " + reason)
+        // We may get multiple executorLost() calls with different loss reasons. For example, one
+        // may be triggered by a dropped connection from the slave while another may be a report
+        // of executor termination from Mesos. We produce log messages for both so we eventually
+        // report the termination reason.
+        logError("Lost an executor " + executorId + " (already removed): " + reason)
       }
     }
     // Call dagScheduler.executorLost without holding the lock on this to prevent deadlock
@@ -436,17 +458,17 @@ private[spark] class TaskSchedulerImpl(
 
 private[spark] object TaskSchedulerImpl {
   /**
-   * Used to balance containers across hosts.
-   *
-   * Accepts a map of hosts to resource offers for that host, and returns a prioritized list of
-   * resource offers representing the order in which the offers should be used.  The resource
-   * offers are ordered such that we'll allocate one container on each host before allocating a
-   * second container on any host, and so on, in order to reduce the damage if a host fails.
-   *
-   * For example, given <h1, [o1, o2, o3]>, <h2, [o4]>, <h1, [o5, o6]>, returns
-   * [o1, o5, o4, 02, o6, o3]
-   */
-  def prioritizeContainers[K, T] (map: HashMap[K, ArrayBuffer[T]]): List[T] = {
+    * Used to balance containers across hosts.
+    *
+    * Accepts a map of hosts to resource offers for that host, and returns a prioritized list of
+    * resource offers representing the order in which the offers should be used.  The resource
+    * offers are ordered such that we'll allocate one container on each host before allocating a
+    * second container on any host, and so on, in order to reduce the damage if a host fails.
+    *
+    * For example, given <h1, [o1, o2, o3]>, <h2, [o4]>, <h1, [o5, o6]>, returns
+    * [o1, o5, o4, 02, o6, o3]
+    */
+  def prioritizeContainers[K, T](map: HashMap[K, ArrayBuffer[T]]): List[T] = {
     val _keyList = new ArrayBuffer[K](map.size)
     _keyList ++= map.keys
 
@@ -465,7 +487,7 @@ private[spark] object TaskSchedulerImpl {
         val containerList: ArrayBuffer[T] = map.get(key).getOrElse(null)
         assert(containerList != null)
         // Get the index'th entry for this host - if present
-        if (index < containerList.size){
+        if (index < containerList.size) {
           retval += containerList.apply(index)
           found = true
         }

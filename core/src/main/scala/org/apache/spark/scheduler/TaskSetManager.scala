@@ -26,34 +26,42 @@ import scala.collection.mutable.HashSet
 import scala.math.max
 import scala.math.min
 
-import org.apache.spark.{ExceptionFailure, ExecutorLostFailure, FetchFailed, Logging, Resubmitted,
-  SparkEnv, Success, TaskEndReason, TaskKilled, TaskResultLost, TaskState}
+import org.apache.spark.{
+  ExceptionFailure, ExecutorLostFailure, FetchFailed, Logging, Resubmitted,
+  SparkEnv, Success, TaskEndReason, TaskKilled, TaskResultLost, TaskState
+}
 import org.apache.spark.TaskState.TaskState
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.util.{Clock, SystemClock}
 
 /**
- * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
- * each task, retries tasks if they fail (up to a limited number of times), and
- * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
- * to it are resourceOffer, which asks the TaskSet whether it wants to run a task on one node,
- * and statusUpdate, which tells it that one of its tasks changed state (e.g. finished).
- *
- * THREADING: This class is designed to only be called from code with a lock on the
- * TaskScheduler (e.g. its event handlers). It should not be called from other threads.
- *
- * @param sched           the TaskSchedulerImpl associated with the TaskSetManager
- * @param taskSet         the TaskSet to manage scheduling for
- * @param maxTaskFailures if any particular task fails more than this number of times, the entire
- *                        task set will be aborted
- */
+  * Schedules the tasks within a single TaskSet in the TaskSchedulerImpl. This class keeps track of
+  * each task, retries tasks if they fail (up to a limited number of times), and
+  * handles locality-aware scheduling for this TaskSet via delay scheduling. The main interfaces
+  * to it are resourceOffer, which asks the TaskSet whether it wants to run a task on one node,
+  * and statusUpdate, which tells it that one of its tasks changed state (e.g. finished).
+  *
+  * THREADING: This class is designed to only be called from code with a lock on the
+  * TaskScheduler (e.g. its event handlers). It should not be called from other threads.
+  *
+  * @param sched           the TaskSchedulerImpl associated with the TaskSetManager
+  * @param taskSet         the TaskSet to manage scheduling for
+  * @param maxTaskFailures if any particular task fails more than this number of times, the entire
+  *                        task set will be aborted
+  * 在TaskSchedulerImpl中的单个TaskSet中计划任务。 此类跟踪每个任务，如果失败（最多有限次数）则重试任务，
+  * 并通过延迟调度处理此TaskSet的位置感知调度。 它的主要接口是resourceOffer，它询问TaskSet是否要在一个节点上运行任务，
+  * 以及statusUpdate，它告诉它其中一个任务改变了状态（例如，已完成）。
+  * THREADING：此类旨在仅从具有TaskScheduler锁定的代码（例如其事件处理程序）调用。 它不应该从其他线程调用。
+  * @param sched与TaskSetManager关联的TaskSchedulerImpl
+  * @param 任务设置TaskSet来管理调度
+  * @param maxTaskFailures如果任何特定任务失败超过这个次数，整个 任务集将被中止
+  */
 private[spark] class TaskSetManager(
-    sched: TaskSchedulerImpl,
-    val taskSet: TaskSet,
-    val maxTaskFailures: Int,
-    clock: Clock = SystemClock)
-  extends Schedulable with Logging
-{
+                                     sched: TaskSchedulerImpl,
+                                     val taskSet: TaskSet,
+                                     val maxTaskFailures: Int,
+                                     clock: Clock = SystemClock)
+  extends Schedulable with Logging {
   val conf = sched.sc.conf
 
   /*
@@ -91,6 +99,7 @@ private[spark] class TaskSetManager(
   var parent: Pool = null
 
   val runningTasksSet = new HashSet[Long]
+
   override def runningTasks = runningTasksSet.size
 
   // True once no more tasks should be launched for this task set manager. TaskSetManagers enter
@@ -108,19 +117,24 @@ private[spark] class TaskSetManager(
   // back at the head of the stack. They are also only cleaned up lazily;
   // when a task is launched, it remains in all the pending lists except
   // the one that it was launched from, but gets removed from them later.
+  // executer级别等待的任务
   private val pendingTasksForExecutor = new HashMap[String, ArrayBuffer[Int]]
 
   // Set of pending tasks for each host. Similar to pendingTasksForExecutor,
   // but at host level.
+  // worker级别等待的任务
   private val pendingTasksForHost = new HashMap[String, ArrayBuffer[Int]]
 
   // Set of pending tasks for each rack -- similar to the above.
+  // 机架级别等待的任务
   private val pendingTasksForRack = new HashMap[String, ArrayBuffer[Int]]
 
   // Set containing pending tasks with no locality preferences.
+  // 没有本地化的等待中的任务
   val pendingTasksWithNoPrefs = new ArrayBuffer[Int]
 
   // Set containing all pending tasks (also used as a stack, as above).
+  // 所有等待的任务
   val allPendingTasks = new ArrayBuffer[Int]
 
   // Tasks that can be speculated. Since these will be a small fraction of total
@@ -159,17 +173,17 @@ private[spark] class TaskSetManager(
   // Delay scheduling variables: we keep track of our current locality level and the time we
   // last launched a task at that level, and move up a level when localityWaits[curLevel] expires.
   // We then move down if we manage to launch a "more local" task.
-  var currentLocalityIndex = 0    // Index of our current locality level in validLocalityLevels
-  var lastLaunchTime = clock.getTime()  // Time we last launched a task at this level
+  var currentLocalityIndex = 0 // Index of our current locality level in validLocalityLevels
+  var lastLaunchTime = clock.getTime() // Time we last launched a task at this level
 
   override def schedulableQueue = null
 
   override def schedulingMode = SchedulingMode.NONE
 
   /**
-   * Add a task to all the pending-task lists that it should be on. If readding is set, we are
-   * re-adding the task so only include it in each list if it's not already there.
-   */
+    * Add a task to all the pending-task lists that it should be on. If readding is set, we are
+    * re-adding the task so only include it in each list if it's not already there.
+    */
   private def addPendingTask(index: Int, readding: Boolean = false) {
     // Utility method that adds `index` to a list only if readding=false or it's not already there
     def addTo(list: ArrayBuffer[Int]) {
@@ -202,40 +216,40 @@ private[spark] class TaskSetManager(
     }
 
     if (!readding) {
-      allPendingTasks += index  // No point scanning this whole list to find the old task there
+      allPendingTasks += index // No point scanning this whole list to find the old task there
     }
   }
 
   /**
-   * Return the pending tasks list for a given executor ID, or an empty list if
-   * there is no map entry for that host
-   */
+    * Return the pending tasks list for a given executor ID, or an empty list if
+    * there is no map entry for that host
+    */
   private def getPendingTasksForExecutor(executorId: String): ArrayBuffer[Int] = {
     pendingTasksForExecutor.getOrElse(executorId, ArrayBuffer())
   }
 
   /**
-   * Return the pending tasks list for a given host, or an empty list if
-   * there is no map entry for that host
-   */
+    * Return the pending tasks list for a given host, or an empty list if
+    * there is no map entry for that host
+    */
   private def getPendingTasksForHost(host: String): ArrayBuffer[Int] = {
     pendingTasksForHost.getOrElse(host, ArrayBuffer())
   }
 
   /**
-   * Return the pending rack-local task list for a given rack, or an empty list if
-   * there is no map entry for that rack
-   */
+    * Return the pending rack-local task list for a given rack, or an empty list if
+    * there is no map entry for that rack
+    */
   private def getPendingTasksForRack(rack: String): ArrayBuffer[Int] = {
     pendingTasksForRack.getOrElse(rack, ArrayBuffer())
   }
 
   /**
-   * Dequeue a pending task from the given list and return its index.
-   * Return None if the list is empty.
-   * This method also cleans up any tasks in the list that have already
-   * been launched, since we want that to happen lazily.
-   */
+    * Dequeue a pending task from the given list and return its index.
+    * Return None if the list is empty.
+    * This method also cleans up any tasks in the list that have already
+    * been launched, since we want that to happen lazily.
+    */
   private def findTaskFromList(execId: String, list: ArrayBuffer[Int]): Option[Int] = {
     var indexOffset = list.size
 
@@ -259,9 +273,9 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Is this re-execution of a failed task on an executor it already failed in before
-   * EXECUTOR_TASK_BLACKLIST_TIMEOUT has elapsed ?
-   */
+    * Is this re-execution of a failed task on an executor it already failed in before
+    * EXECUTOR_TASK_BLACKLIST_TIMEOUT has elapsed ?
+    */
   private def executorIsBlacklisted(execId: String, taskId: Int): Boolean = {
     if (failedExecutors.contains(taskId)) {
       val failed = failedExecutors.get(taskId).get
@@ -274,13 +288,12 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Return a speculative task for a given executor if any are available. The task should not have
-   * an attempt running on this host, in case the host is slow. In addition, the task should meet
-   * the given locality constraint.
-   */
+    * Return a speculative task for a given executor if any are available. The task should not have
+    * an attempt running on this host, in case the host is slow. In addition, the task should meet
+    * the given locality constraint.
+    */
   private def findSpeculativeTask(execId: String, host: String, locality: TaskLocality.Value)
-    : Option[(Int, TaskLocality.Value)] =
-  {
+  : Option[(Int, TaskLocality.Value)] = {
     speculatableTasks.retain(index => !successful(index)) // Remove finished tasks from set
 
     def canRunOnHost(index: Int): Boolean =
@@ -335,12 +348,11 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Dequeue a pending task for a given node and return its index and locality level.
-   * Only search for tasks matching the given locality constraint.
-   */
+    * Dequeue a pending task for a given node and return its index and locality level.
+    * Only search for tasks matching the given locality constraint.
+    */
   private def findTask(execId: String, host: String, locality: TaskLocality.Value)
-    : Option[(Int, TaskLocality.Value)] =
-  {
+  : Option[(Int, TaskLocality.Value)] = {
     for (index <- findTaskFromList(execId, getPendingTasksForExecutor(execId))) {
       return Some((index, TaskLocality.PROCESS_LOCAL))
     }
@@ -376,20 +388,19 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Respond to an offer of a single executor from the scheduler by finding a task
-   */
+    * Respond to an offer of a single executor from the scheduler by finding a task
+    */
   def resourceOffer(
-      execId: String,
-      host: String,
-      maxLocality: TaskLocality.TaskLocality)
-    : Option[TaskDescription] =
-  {
+                     execId: String,
+                     host: String,
+                     maxLocality: TaskLocality.TaskLocality)
+  : Option[TaskDescription] = {
     if (!isZombie) {
       val curTime = clock.getTime()
 
       var allowedLocality = getAllowedLocalityLevel(curTime)
       if (allowedLocality > maxLocality) {
-        allowedLocality = maxLocality   // We're not allowed to search for farther-away tasks
+        allowedLocality = maxLocality // We're not allowed to search for farther-away tasks
       }
 
       findTask(execId, host, allowedLocality) match {
@@ -435,12 +446,11 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Get the level we can launch tasks according to delay scheduling, based on current wait time.
-   */
+    * Get the level we can launch tasks according to delay scheduling, based on current wait time.
+    */
   private def getAllowedLocalityLevel(curTime: Long): TaskLocality.TaskLocality = {
     while (curTime - lastLaunchTime >= localityWaits(currentLocalityIndex) &&
-        currentLocalityIndex < myLocalityLevels.length - 1)
-    {
+      currentLocalityIndex < myLocalityLevels.length - 1) {
       // Jump to the next locality level, and remove our waiting time for the current one since
       // we don't want to count it again on the next one
       lastLaunchTime += localityWaits(currentLocalityIndex)
@@ -450,10 +460,10 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Find the index in myLocalityLevels for a given locality. This is also designed to work with
-   * localities that are not in myLocalityLevels (in case we somehow get those) by returning the
-   * next-biggest level we have. Uses the fact that the last value in myLocalityLevels is ANY.
-   */
+    * Find the index in myLocalityLevels for a given locality. This is also designed to work with
+    * localities that are not in myLocalityLevels (in case we somehow get those) by returning the
+    * next-biggest level we have. Uses the fact that the last value in myLocalityLevels is ANY.
+    */
   def getLocalityIndex(locality: TaskLocality.TaskLocality): Int = {
     var index = 0
     while (locality > myLocalityLevels(index)) {
@@ -469,8 +479,8 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Marks the task as successful and notifies the DAGScheduler that a task has ended.
-   */
+    * Marks the task as successful and notifies the DAGScheduler that a task has ended.
+    */
   def handleSuccessfulTask(tid: Long, result: DirectTaskResult[_]) = {
     val info = taskInfos(tid)
     val index = info.index
@@ -496,9 +506,9 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Marks the task as failed, re-adds it to the list of pending tasks, and notifies the
-   * DAG Scheduler.
-   */
+    * Marks the task as failed, re-adds it to the list of pending tasks, and notifies the
+    * DAG Scheduler.
+    */
   def handleFailedTask(tid: Long, state: TaskState, reason: TaskEndReason) {
     val info = taskInfos(tid)
     if (info.failed) {
@@ -511,7 +521,7 @@ private[spark] class TaskSetManager(
     if (!isZombie) {
       logWarning("Lost TID %s (task %s:%d)".format(tid, taskSet.id, index))
     }
-    var taskMetrics : TaskMetrics = null
+    var taskMetrics: TaskMetrics = null
     var failureReason: String = null
     reason match {
       case fetchFailed: FetchFailed =>
@@ -577,7 +587,7 @@ private[spark] class TaskSetManager(
     sched.dagScheduler.taskEnded(tasks(index), reason, null, null, info, taskMetrics)
     addPendingTask(index)
     if (!isZombie && state != TaskState.KILLED) {
-      assert (null != failureReason)
+      assert(null != failureReason)
       numFailures(index) += 1
       if (numFailures(index) >= maxTaskFailures) {
         logError("Task %s:%d failed %d times; aborting job".format(
@@ -598,9 +608,9 @@ private[spark] class TaskSetManager(
   }
 
   /** If the given task ID is not in the set of running tasks, adds it.
-   *
-   * Used to keep track of the number of running tasks, for enforcing scheduling policies.
-   */
+    *
+    * Used to keep track of the number of running tasks, for enforcing scheduling policies.
+    */
   def addRunningTask(tid: Long) {
     if (runningTasksSet.add(tid) && parent != null) {
       parent.increaseRunningTasks(1)
@@ -637,10 +647,10 @@ private[spark] class TaskSetManager(
     // that it's okay if we add a task to the same queue twice (if it had multiple preferred
     // locations), because findTaskFromList will skip already-running tasks.
     for (index <- getPendingTasksForExecutor(execId)) {
-      addPendingTask(index, readding=true)
+      addPendingTask(index, readding = true)
     }
     for (index <- getPendingTasksForHost(host)) {
-      addPendingTask(index, readding=true)
+      addPendingTask(index, readding = true)
     }
 
     // Re-enqueue any tasks that ran on the failed executor if this is a shuffle map stage.
@@ -667,12 +677,12 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Check for tasks to be speculated and return true if there are any. This is called periodically
-   * by the TaskScheduler.
-   *
-   * TODO: To make this scale to large jobs, we need to maintain a list of running tasks, so that
-   * we don't scan the whole task set. It might also help to make this sorted by launch time.
-   */
+    * Check for tasks to be speculated and return true if there are any. This is called periodically
+    * by the TaskScheduler.
+    *
+    * TODO: To make this scale to large jobs, we need to maintain a list of running tasks, so that
+    * we don't scan the whole task set. It might also help to make this sorted by launch time.
+    */
   override def checkSpeculatableTasks(): Boolean = {
     // Can't speculate if we only have one task, and no need to speculate if the task set is a
     // zombie.
@@ -721,9 +731,9 @@ private[spark] class TaskSetManager(
   }
 
   /**
-   * Compute the locality levels used in this TaskSet. Assumes that all tasks have already been
-   * added to queues using addPendingTask.
-   */
+    * Compute the locality levels used in this TaskSet. Assumes that all tasks have already been
+    * added to queues using addPendingTask.
+    */
   private def computeValidLocalityLevels(): Array[TaskLocality.TaskLocality] = {
     import TaskLocality.{PROCESS_LOCAL, NODE_LOCAL, RACK_LOCAL, ANY}
     val levels = new ArrayBuffer[TaskLocality.TaskLocality]

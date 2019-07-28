@@ -44,17 +44,17 @@ import org.apache.spark.ui.SparkUI
 import org.apache.spark.util.{AkkaUtils, Utils}
 
 private[spark] class Master(
-    host: String,
-    port: Int,
-    webUiPort: Int,
-    val securityMgr: SecurityManager)
+                             host: String,
+                             port: Int,
+                             webUiPort: Int,
+                             val securityMgr: SecurityManager)
   extends Actor with Logging {
 
-  import context.dispatcher   // to use Akka's scheduler.schedule()
+  import context.dispatcher // to use Akka's scheduler.schedule()
 
   val conf = new SparkConf
 
-  def createDateFormat = new SimpleDateFormat("yyyyMMddHHmmss")  // For application IDs
+  def createDateFormat = new SimpleDateFormat("yyyyMMddHHmmss") // For application IDs
   val WORKER_TIMEOUT = conf.getLong("spark.worker.timeout", 60) * 1000
   val RETAINED_APPLICATIONS = conf.getInt("spark.deploy.retainedApplications", 200)
   val REAPER_ITERATIONS = conf.getInt("spark.dead.worker.persistence", 15)
@@ -141,11 +141,11 @@ private[spark] class Master(
     }
 
     leaderElectionAgent = RECOVERY_MODE match {
-        case "ZOOKEEPER" =>
-          context.actorOf(Props(classOf[ZooKeeperLeaderElectionAgent], self, masterUrl, conf))
-        case _ =>
-          context.actorOf(Props(classOf[MonarchyLeaderAgent], self))
-      }
+      case "ZOOKEEPER" =>
+        context.actorOf(Props(classOf[ZooKeeperLeaderElectionAgent], self, masterUrl, conf))
+      case _ =>
+        context.actorOf(Props(classOf[MonarchyLeaderAgent], self))
+    }
   }
 
   override def preRestart(reason: Throwable, message: Option[Any]) {
@@ -167,13 +167,16 @@ private[spark] class Master(
   }
 
   override def receive = {
+    // 已经选举leader事件
     case ElectedLeader => {
+      // 从持久化引擎中获取已存储的应用，driver和workder
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData()
       state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
         RecoveryState.ALIVE
       } else {
         RecoveryState.RECOVERING
       }
+      // 如果状态是恢复中，那么进行恢复
       logInfo("I have been elected leader! New state: " + state)
       if (state == RecoveryState.RECOVERING) {
         beginRecovery(storedApps, storedDrivers, storedWorkers)
@@ -188,9 +191,8 @@ private[spark] class Master(
       logError("Leadership has been revoked -- master shutting down.")
       System.exit(0)
     }
-
-    case RegisterWorker(id, workerHost, workerPort, cores, memory, workerUiPort, publicAddress) =>
-    {
+    // workder 注册
+    case RegisterWorker(id, workerHost, workerPort, cores, memory, workerUiPort, publicAddress) => {
       logInfo("Registering worker %s:%d with %d cores, %s RAM".format(
         workerHost, workerPort, cores, Utils.megabytesToString(memory)))
       if (state == RecoveryState.STANDBY) {
@@ -200,8 +202,11 @@ private[spark] class Master(
       } else {
         val worker = new WorkerInfo(id, workerHost, workerPort, cores, memory,
           sender, workerUiPort, publicAddress)
+        // 如果注册成功即向实例workers idtowokers容器中加入WorkerInfo信息
         if (registerWorker(worker)) {
+          // 持久化这个worker信息，方便高可用恢复
           persistenceEngine.addWorker(worker)
+          // 向对应的worker发送已注册状态信息
           sender ! RegisteredWorker(masterUrl, masterWebUiUrl)
           schedule()
         } else {
@@ -275,7 +280,7 @@ private[spark] class Master(
           sender ! DriverStatusResponse(found = false, None, None, None, None)
       }
     }
-
+    // 注册提交应用程序信息
     case RegisterApplication(description) => {
       if (state == RecoveryState.STANDBY) {
         // ignore, don't send response
@@ -285,12 +290,14 @@ private[spark] class Master(
         registerApplication(app)
         logInfo("Registered app " + description.name + " with ID " + app.id)
         persistenceEngine.addApplication(app)
+        // 告诉driver 应用已注册
         sender ! RegisteredApplication(app.id, masterUrl)
         schedule()
       }
     }
-
+    // 如果Executor状态变更
     case ExecutorStateChanged(appId, execId, state, message, exitStatus) => {
+      // 遍历获取应用所使用的executer（有状态变更的）
       val execOption = idToApp.get(appId).flatMap(app => app.executors.get(execId))
       execOption match {
         case Some(exec) => {
@@ -346,7 +353,9 @@ private[spark] class Master(
           logWarning("Master change ack from unknown app: " + appId)
       }
 
-      if (canCompleteRecovery) { completeRecovery() }
+      if (canCompleteRecovery) {
+        completeRecovery()
+      }
     }
 
     case WorkerSchedulerStateResponse(workerId, executors, driverIds) => {
@@ -374,7 +383,9 @@ private[spark] class Master(
           logWarning("Scheduler state from unknown worker: " + workerId)
       }
 
-      if (canCompleteRecovery) { completeRecovery() }
+      if (canCompleteRecovery) {
+        completeRecovery()
+      }
     }
 
     case DisassociatedEvent(_, address, _) => {
@@ -382,7 +393,9 @@ private[spark] class Master(
       logInfo(s"$address got disassociated, removing it.")
       addressToWorker.get(address).foreach(removeWorker)
       addressToApp.get(address).foreach(finishApplication)
-      if (state == RecoveryState.RECOVERING && canCompleteRecovery) { completeRecovery() }
+      if (state == RecoveryState.RECOVERING && canCompleteRecovery) {
+        completeRecovery()
+      }
     }
 
     case RequestMasterState => {
@@ -404,12 +417,13 @@ private[spark] class Master(
       apps.count(_.state == ApplicationState.UNKNOWN) == 0
 
   def beginRecovery(storedApps: Seq[ApplicationInfo], storedDrivers: Seq[DriverInfo],
-      storedWorkers: Seq[WorkerInfo]) {
+                    storedWorkers: Seq[WorkerInfo]) {
     for (app <- storedApps) {
       logInfo("Trying to recover app: " + app.id)
       try {
         registerApplication(app)
         app.state = ApplicationState.UNKNOWN
+        // 通知驱动器 主节点信息变更的消息，消息包含master url  master的web url
         app.driver ! MasterChanged(masterUrl, masterWebUiUrl)
       } catch {
         case e: Exception => logInfo("App " + app.id + " had exception on reconnect")
@@ -437,7 +451,9 @@ private[spark] class Master(
   def completeRecovery() {
     // Ensure "only-once" recovery semantics using a short synchronization period.
     synchronized {
-      if (state != RecoveryState.RECOVERING) { return }
+      if (state != RecoveryState.RECOVERING) {
+        return
+      }
       state = RecoveryState.COMPLETING_RECOVERY
     }
 
@@ -463,25 +479,31 @@ private[spark] class Master(
   }
 
   /**
-   * Can an app use the given worker? True if the worker has enough memory and we haven't already
-   * launched an executor for the app on it (right now the standalone backend doesn't like having
-   * two executors on the same worker).
-   */
+    * Can an app use the given worker? True if the worker has enough memory and we haven't already
+    * launched an executor for the app on it (right now the standalone backend doesn't like having
+    * two executors on the same worker).
+    */
   def canUse(app: ApplicationInfo, worker: WorkerInfo): Boolean = {
     worker.memoryFree >= app.desc.memoryPerSlave && !worker.hasExecutor(app)
   }
 
   /**
-   * Schedule the currently available resources among waiting apps. This method will be called
-   * every time a new app joins or resource availability changes.
-   */
+    * Schedule the currently available resources among waiting apps. This method will be called
+    * every time a new app joins or resource availability changes.
+    */
   private def schedule() {
-    if (state != RecoveryState.ALIVE) { return }
+    // 如果位于恢复期，那么直接返回
+    if (state != RecoveryState.ALIVE) {
+      return
+    }
 
     // First schedule drivers, they take strict precedence over applications
-    val shuffledWorkers = Random.shuffle(workers) // Randomization helps balance drivers
+    // 首先安排驱动程序，它们严格优先于应用程序
+    // Randomization helps balance drivers
+    val shuffledWorkers = Random.shuffle(workers)
     for (worker <- shuffledWorkers if worker.state == WorkerState.ALIVE) {
       for (driver <- List(waitingDrivers: _*)) { // iterate over a copy of waitingDrivers
+        // 遍历等待中的drivers,那么
         if (worker.memoryFree >= driver.desc.mem && worker.coresFree >= driver.desc.cores) {
           launchDriver(worker, driver)
           waitingDrivers -= driver
@@ -545,6 +567,7 @@ private[spark] class Master(
   def registerWorker(worker: WorkerInfo): Boolean = {
     // There may be one or more refs to dead workers on this same node (w/ different ID's),
     // remove them.
+    // 可能相同ip端口的worker的状态是死掉的状态，那么从workers列表中将老的删除，例如workder重启
     workers.filter { w =>
       (w.host == worker.host && w.port == worker.port) && (w.state == WorkerState.DEAD)
     }.foreach { w =>
@@ -634,7 +657,7 @@ private[spark] class Master(
       addressToApp -= app.driver.path.address
       if (completedApps.size >= RETAINED_APPLICATIONS) {
         val toRemove = math.max(RETAINED_APPLICATIONS / 10, 1)
-        completedApps.take(toRemove).foreach( a => {
+        completedApps.take(toRemove).foreach(a => {
           appIdToUI.remove(a.id).foreach { ui => webUi.detachSparkUI(ui) }
           applicationMetricsSystem.removeSource(a.appSource)
         })
@@ -664,12 +687,14 @@ private[spark] class Master(
   }
 
   /**
-   * Rebuild a new SparkUI from the given application's event logs.
-   * Return whether this is successful.
-   */
+    * Rebuild a new SparkUI from the given application's event logs.
+    * Return whether this is successful.
+    */
   def rebuildSparkUI(app: ApplicationInfo): Boolean = {
     val appName = app.desc.name
-    val eventLogDir = app.desc.eventLogDir.getOrElse { return false }
+    val eventLogDir = app.desc.eventLogDir.getOrElse {
+      return false
+    }
     val fileSystem = Utils.getHadoopFileSystem(eventLogDir)
     val eventLogInfo = EventLoggingListener.parseLoggingInfo(eventLogDir, fileSystem)
     val eventLogPaths = eventLogInfo.logPaths
@@ -709,7 +734,7 @@ private[spark] class Master(
     for (worker <- toRemove) {
       if (worker.state != WorkerState.DEAD) {
         logWarning("Removing %s because we got no heartbeat in %d seconds".format(
-          worker.id, WORKER_TIMEOUT/1000))
+          worker.id, WORKER_TIMEOUT / 1000))
         removeWorker(worker)
       } else {
         if (worker.lastHeartbeat < currentTime - ((REAPER_ITERATIONS + 1) * WORKER_TIMEOUT)) {
@@ -779,10 +804,10 @@ private[spark] object Master {
   }
 
   def startSystemAndActor(
-      host: String,
-      port: Int,
-      webUiPort: Int,
-      conf: SparkConf): (ActorSystem, Int, Int) = {
+                           host: String,
+                           port: Int,
+                           webUiPort: Int,
+                           conf: SparkConf): (ActorSystem, Int, Int) = {
     val securityMgr = new SecurityManager(conf)
     val (actorSystem, boundPort) = AkkaUtils.createActorSystem(systemName, host, port, conf = conf,
       securityManager = securityMgr)

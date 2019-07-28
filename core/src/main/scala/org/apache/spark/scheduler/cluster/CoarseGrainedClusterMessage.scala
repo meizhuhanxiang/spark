@@ -56,6 +56,7 @@ private[spark] object CoarseGrainedClusterMessages {
   }
 
   // Internal messages in driver
+  // 恢复(revive)供应（offers）
   case object ReviveOffers extends CoarseGrainedClusterMessage
 
   case object StopDriver extends CoarseGrainedClusterMessage

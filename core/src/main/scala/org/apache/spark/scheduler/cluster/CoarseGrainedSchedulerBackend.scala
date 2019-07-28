@@ -33,23 +33,31 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.util.{SerializableBuffer, AkkaUtils, Utils}
 
 /**
- * A scheduler backend that waits for coarse grained executors to connect to it through Akka.
- * This backend holds onto each executor for the duration of the Spark job rather than relinquishing
- * executors whenever a task is done and asking the scheduler to launch a new executor for
- * each new task. Executors may be launched in a variety of ways, such as Mesos tasks for the
- * coarse-grained Mesos mode or standalone processes for Spark's standalone deploy mode
- * (spark.deploy.*).
- */
+  * A scheduler backend that waits for coarse grained executors to connect to it through Akka.
+  * This backend holds onto each executor for the duration of the Spark job rather than relinquishing
+  * executors whenever a task is done and asking the scheduler to launch a new executor for
+  * each new task. Executors may be launched in a variety of ways, such as Mesos tasks for the
+  * coarse-grained Mesos mode or standalone processes for Spark's standalone deploy mode
+  * (spark.deploy.*).
+  * 一个调度程序后端，等待粗粒度执行程序通过Akka连接到它。这个后端在Spark作业期间保留在每个执行程序上，
+  * 而不是在任务完成时放弃执行程序并要求调度程序为每个执行程序启动一个新的执行程序 新任务。
+  * 执行程序可以以多种方式启动，例如用于粗粒度Mesos模式的Mesos任务或用于Spark的
+  * 独立部署模式（spark.deploy。*）的独立进程。
+  * def start(): Unit
+  * def stop(): Unit
+  * def reviveOffers(): Unit
+  * def defaultParallelism(): Int
+  */
 private[spark]
 class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: ActorSystem)
-  extends SchedulerBackend with Logging
-{
+  extends SchedulerBackend with Logging {
   // Use an atomic variable to track total number of cores in the cluster for simplicity and speed
   var totalCoreCount = new AtomicInteger(0)
   val conf = scheduler.sc.conf
   private val timeout = AkkaUtils.askTimeout(conf)
   private val akkaFrameSize = AkkaUtils.maxFrameSizeBytes(conf)
 
+  // 一个和master node通信的actor，这个位置建立与master关系，申请excutor等，这里定义driver端
   class DriverActor(sparkProperties: Seq[(String, String)]) extends Actor {
     private val executorActor = new HashMap[String, ActorRef]
     private val executorAddress = new HashMap[String, Address]
@@ -129,7 +137,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
     // Make fake resource offers on all executors
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
-        executorHost.toArray.map {case (id, host) => new WorkerOffer(id, host, freeCores(id))}))
+        executorHost.toArray.map { case (id, host) => new WorkerOffer(id, host, freeCores(id)) }))
     }
 
     // Make fake resource offers on just one executor
@@ -185,6 +193,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
   val taskIdsOnSlave = new HashMap[String, HashSet[String]]
 
   override def start() {
+    // 获取所有的spark开头的配置项
     val properties = new ArrayBuffer[(String, String)]
     for ((key, value) <- scheduler.sc.conf.getAll) {
       if (key.startsWith("spark.")) {
@@ -192,6 +201,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, actorSystem: A
       }
     }
     // TODO (prashant) send conf instead of properties
+    // 初始化DriverActor， akka名：CoarseGrainedScheduler
     driverActor = actorSystem.actorOf(
       Props(new DriverActor(properties)), name = CoarseGrainedSchedulerBackend.ACTOR_NAME)
   }
