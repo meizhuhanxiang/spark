@@ -173,6 +173,7 @@ private[spark] class TaskSchedulerImpl(
     this.synchronized {
       val manager = new TaskSetManager(this, taskSet, maxTaskFailures)
       activeTaskSets(taskSet.id) = manager
+      // 这个位置会将taskSetManager 加入到rootPool里面去
       schedulableBuilder.addTaskSetManager(manager, manager.taskSet.properties)
 
       if (!isLocal && !hasReceivedTask) {
@@ -259,6 +260,8 @@ private[spark] class TaskSchedulerImpl(
 
     // Take each TaskSet in our scheduling order, and then offer it each node in increasing order
     // of locality levels so that it gets a chance to launch local tasks on all of them.
+    // 按照我们的调度顺序获取每个TaskSet，然后按地点级别的递增顺序为每个节点提供它，
+    // 以便它有机会在所有节点上启动本地任务。
     var launchedTask = false
     for (taskSet <- sortedTaskSets; maxLocality <- TaskLocality.values) {
       do {

@@ -60,7 +60,7 @@ private[spark] class SparkDeploySchedulerBackend(
     val sparkHome = sc.getSparkHome()
     val appDesc = new ApplicationDescription(sc.appName, maxCores, sc.executorMemory, command,
       sparkHome, sc.ui.appUIAddress, sc.eventLogger.map(_.logDir))
-
+    // 注册 Application
     client = new AppClient(sc.env.actorSystem, masters, appDesc, this, conf)
     client.start()
   }

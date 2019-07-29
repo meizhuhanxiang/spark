@@ -44,17 +44,17 @@ import org.apache.spark.util.{Clock, SystemClock}
   * THREADING: This class is designed to only be called from code with a lock on the
   * TaskScheduler (e.g. its event handlers). It should not be called from other threads.
   *
-  * @param sched           the TaskSchedulerImpl associated with the TaskSetManager
-  * @param taskSet         the TaskSet to manage scheduling for
-  * @param maxTaskFailures if any particular task fails more than this number of times, the entire
-  *                        task set will be aborted
-  * 在TaskSchedulerImpl中的单个TaskSet中计划任务。 此类跟踪每个任务，如果失败（最多有限次数）则重试任务，
-  * 并通过延迟调度处理此TaskSet的位置感知调度。 它的主要接口是resourceOffer，它询问TaskSet是否要在一个节点上运行任务，
-  * 以及statusUpdate，它告诉它其中一个任务改变了状态（例如，已完成）。
-  * THREADING：此类旨在仅从具有TaskScheduler锁定的代码（例如其事件处理程序）调用。 它不应该从其他线程调用。
+  * @param sched                           the TaskSchedulerImpl associated with the TaskSetManager
+  * @param taskSet                         the TaskSet to manage scheduling for
+  * @param maxTaskFailures                 if any particular task fails more than this number of times, the entire
+  *                                        task set will be aborted
+  *                                        在TaskSchedulerImpl中的单个TaskSet中计划任务。 此类跟踪每个任务，如果失败（最多有限次数）则重试任务，
+  *                                        并通过延迟调度处理此TaskSet的位置感知调度。 它的主要接口是resourceOffer，它询问TaskSet是否要在一个节点上运行任务，
+  *                                        以及statusUpdate，它告诉它其中一个任务改变了状态（例如，已完成）。
+  *                                        THREADING：此类旨在仅从具有TaskScheduler锁定的代码（例如其事件处理程序）调用。 它不应该从其他线程调用。
   * @param sched与TaskSetManager关联的TaskSchedulerImpl
   * @param 任务设置TaskSet来管理调度
-  * @param maxTaskFailures如果任何特定任务失败超过这个次数，整个 任务集将被中止
+  * @param maxTaskFailures如果任何特定任务失败超过这个次数 ，整个 任务集将被中止
   */
 private[spark] class TaskSetManager(
                                      sched: TaskSchedulerImpl,
@@ -389,6 +389,7 @@ private[spark] class TaskSetManager(
 
   /**
     * Respond to an offer of a single executor from the scheduler by finding a task
+    * 通过查找任务来响应调度程序中单个执行程序的提议
     */
   def resourceOffer(
                      execId: String,
@@ -423,6 +424,7 @@ private[spark] class TaskSetManager(
           val startTime = clock.getTime()
           // We rely on the DAGScheduler to catch non-serializable closures and RDDs, so in here
           // we assume the task can be serialized without exceptions.
+          // DAGScheduler 提交作业的时候已经尝试序列化过，所以在这里我们默认序列化是没有问题的
           val serializedTask = Task.serializeWithDependencies(
             task, sched.sc.addedFiles, sched.sc.addedJars, ser)
           val timeTaken = clock.getTime() - startTime

@@ -121,6 +121,7 @@ private[spark] class AppClient(
 
     override def receive = {
       case RegisteredApplication(appId_, masterUrl) =>
+        logInfo("Application registered: appid %s, masterUrl %s".format(appId_, masterUrl))
         appId = appId_
         registered = true
         changeMaster(masterUrl)
