@@ -15,7 +15,8 @@ object TestLocal {
     val pairdd = rdd.map(x => (x, x))
     val reducerdd = pairdd.reduceByKey(_ + _)
     val rrducerdd = reducerdd.reduceByKey(_ + _)
-    val res = rrducerdd.collect()
+    val rrrducerdd = rrducerdd.sortByKey()
+    val res = rrrducerdd.collect()
     println(res)
     while (true) {
       Thread.sleep(10);

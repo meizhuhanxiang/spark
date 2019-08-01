@@ -158,6 +158,7 @@ private[spark] class ShuffleMapTask(
       for (elem <- rdd.iterator(split, context)) {
         val pair = elem.asInstanceOf[Product2[Any, Any]]
         val bucketId = dep.partitioner.getPartition(pair._1)
+        // shuffle.writers是一个writer数组，size为下个任务的task数，即
         shuffle.writers(bucketId).write(pair)
       }
 

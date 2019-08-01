@@ -24,16 +24,17 @@ import com.google.common.hash.Hashing
 import org.apache.spark.annotation.DeveloperApi
 
 /**
- * :: DeveloperApi ::
- * A simple open hash table optimized for the append-only use case, where keys
- * are never removed, but the value for each key may be changed.
- *
- * This implementation uses quadratic probing with a power-of-2 hash table
- * size, which is guaranteed to explore all spaces for each key (see
- * http://en.wikipedia.org/wiki/Quadratic_probing).
- *
- * TODO: Cache the hash values of each key? java.util.HashMap does that.
- */
+  * :: DeveloperApi ::
+  * 一个简单的开放哈希map，针对仅附加用例进行了优化，其中key永远不会被删除，但每个key的值可能会更改。
+  * A simple open hash table optimized for the append-only use case, where keys
+  * are never removed, but the value for each key may be changed.
+  *
+  * This implementation uses quadratic probing with a power-of-2 hash table
+  * size, which is guaranteed to explore all spaces for each key (see
+  * http://en.wikipedia.org/wiki/Quadratic_probing).
+  *
+  * TODO: Cache the hash values of each key? java.util.HashMap does that.
+  */
 @DeveloperApi
 class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   extends Iterable[(K, V)] with Serializable {
@@ -102,7 +103,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
       if (curKey.eq(null)) {
         data(2 * pos) = k
         data(2 * pos + 1) = value.asInstanceOf[AnyRef]
-        incrementSize()  // Since we added a new key
+        incrementSize() // Since we added a new key
         return
       } else if (k.eq(curKey) || k.equals(curKey)) {
         data(2 * pos + 1) = value.asInstanceOf[AnyRef]
@@ -116,9 +117,9 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   }
 
   /**
-   * Set the value for key to updateFunc(hadValue, oldValue), where oldValue will be the old value
-   * for key, if any, or null otherwise. Returns the newly updated value.
-   */
+    * Set the value for key to updateFunc(hadValue, oldValue), where oldValue will be the old value
+    * for key, if any, or null otherwise. Returns the newly updated value.
+    */
   def changeValue(key: K, updateFunc: (Boolean, V) => V): V = {
     assert(!destroyed, destructionMessage)
     val k = key.asInstanceOf[AnyRef]
@@ -161,7 +162,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
 
       /** Get the next value we should return from next(), or null if we're finished iterating */
       def nextValue(): (K, V) = {
-        if (pos == -1) {    // Treat position -1 as looking at the null value
+        if (pos == -1) { // Treat position -1 as looking at the null value
           if (haveNullValue) {
             return (null.asInstanceOf[K], nullValue)
           }
@@ -200,8 +201,8 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   }
 
   /**
-   * Re-hash a value to deal better with hash functions that don't differ in the lower bits.
-   */
+    * Re-hash a value to deal better with hash functions that don't differ in the lower bits.
+    */
   private def rehash(h: Int): Int = Hashing.murmur3_32().hashInt(h).asInt()
 
   /** Double the table's size and re-hash everything */
@@ -251,9 +252,9 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   }
 
   /**
-   * Return an iterator of the map in sorted order. This provides a way to sort the map without
-   * using additional memory, at the expense of destroying the validity of the map.
-   */
+    * Return an iterator of the map in sorted order. This provides a way to sort the map without
+    * using additional memory, at the expense of destroying the validity of the map.
+    */
   def destructiveSortedIterator(cmp: Comparator[(K, V)]): Iterator[(K, V)] = {
     destroyed = true
     // Pack KV pairs into the front of the underlying array
@@ -278,7 +279,9 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
     new Iterator[(K, V)] {
       var i = 0
       var nullValueReady = haveNullValue
+
       def hasNext: Boolean = (i < newIndex || nullValueReady)
+
       def next(): (K, V) = {
         if (nullValueReady) {
           nullValueReady = false
@@ -293,7 +296,7 @@ class AppendOnlyMap[K, V](initialCapacity: Int = 64)
   }
 
   /**
-   * Return whether the next insert will cause the map to grow
-   */
+    * Return whether the next insert will cause the map to grow
+    */
   def atGrowThreshold: Boolean = curSize == growThreshold
 }
