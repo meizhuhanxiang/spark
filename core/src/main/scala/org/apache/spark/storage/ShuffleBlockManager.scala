@@ -38,26 +38,28 @@ private[spark] trait ShuffleWriterGroup {
 }
 
 /**
- * Manages assigning disk-based block writers to shuffle tasks. Each shuffle task gets one file
- * per reducer (this set of files is called a ShuffleFileGroup).
- *
- * As an optimization to reduce the number of physical shuffle files produced, multiple shuffle
- * blocks are aggregated into the same file. There is one "combined shuffle file" per reducer
- * per concurrently executing shuffle task. As soon as a task finishes writing to its shuffle
- * files, it releases them for another task.
- * Regarding the implementation of this feature, shuffle files are identified by a 3-tuple:
- *   - shuffleId: The unique id given to the entire shuffle stage.
- *   - bucketId: The id of the output partition (i.e., reducer id)
- *   - fileId: The unique id identifying a group of "combined shuffle files." Only one task at a
- *       time owns a particular fileId, and this id is returned to a pool when the task finishes.
- * Each shuffle file is then mapped to a FileSegment, which is a 3-tuple (file, offset, length)
- * that specifies where in a given file the actual block data is located.
- *
- * Shuffle file metadata is stored in a space-efficient manner. Rather than simply mapping
- * ShuffleBlockIds directly to FileSegments, each ShuffleFileGroup maintains a list of offsets for
- * each block stored in each file. In order to find the location of a shuffle block, we search the
- * files within a ShuffleFileGroups associated with the block's reducer.
- */
+  * Manages assigning disk-based block writers to shuffle tasks. Each shuffle task gets one file
+  * per reducer (this set of files is called a ShuffleFileGroup).
+  *
+  * As an optimization to reduce the number of physical shuffle files produced, multiple shuffle
+  * blocks are aggregated into the same file. There is one "combined shuffle file" per reducer
+  * per concurrently executing shuffle task. As soon as a task finishes writing to its shuffle
+  * files, it releases them for another task.
+  * Regarding the implementation of this feature, shuffle files are identified by a 3-tuple:
+  *   - shuffleId: The unique id given to the entire shuffle stage.
+  *   - bucketId: The id of the output partition (i.e., reducer id)
+  *   - fileId: The unique id identifying a group of "combined shuffle files." Only one task at a
+  * time owns a particular fileId, and this id is returned to a pool when the task finishes.
+  * Each shuffle file is then mapped to a FileSegment, which is a 3-tuple (file, offset, length)
+  * that specifies where in a given file the actual block data is located.
+  *
+  * Shuffle file metadata is stored in a space-efficient manner. Rather than simply mapping
+  * ShuffleBlockIds directly to FileSegments, each ShuffleFileGroup maintains a list of offsets for
+  * each block stored in each file. In order to find the location of a shuffle block, we search the
+  * files within a ShuffleFileGroups associated with the block's reducer.
+  *
+  * 参考这个博客文章，讲解的比较到位：https://www.iteblog.com/archives/1672.html
+  */
 private[spark]
 class ShuffleBlockManager(blockManager: BlockManager) extends Logging {
   def conf = blockManager.conf
@@ -65,23 +67,23 @@ class ShuffleBlockManager(blockManager: BlockManager) extends Logging {
   // Turning off shuffle file consolidation causes all shuffle Blocks to get their own file.
   // TODO: Remove this once the shuffle file consolidation feature is stable.
   val consolidateShuffleFiles =
-    conf.getBoolean("spark.shuffle.consolidateFiles", false)
+  conf.getBoolean("spark.shuffle.consolidateFiles", false)
 
   private val bufferSize = conf.getInt("spark.shuffle.file.buffer.kb", 100) * 1024
 
   /**
-   * Contains all the state related to a particular shuffle. This includes a pool of unused
-   * ShuffleFileGroups, as well as all ShuffleFileGroups that have been created for the shuffle.
-   */
+    * Contains all the state related to a particular shuffle. This includes a pool of unused
+    * ShuffleFileGroups, as well as all ShuffleFileGroups that have been created for the shuffle.
+    */
   private class ShuffleState(val numBuckets: Int) {
     val nextFileId = new AtomicInteger(0)
     val unusedFileGroups = new ConcurrentLinkedQueue[ShuffleFileGroup]()
     val allFileGroups = new ConcurrentLinkedQueue[ShuffleFileGroup]()
 
     /**
-     * The mapIds of all map tasks completed on this Executor for this shuffle.
-     * NB: This is only populated if consolidateShuffleFiles is FALSE. We don't need it otherwise.
-     */
+      * The mapIds of all map tasks completed on this Executor for this shuffle.
+      * NB: This is only populated if consolidateShuffleFiles is FALSE. We don't need it otherwise.
+      */
     val completedMapTasks = new ConcurrentLinkedQueue[Int]()
   }
 
@@ -90,7 +92,7 @@ class ShuffleBlockManager(blockManager: BlockManager) extends Logging {
 
   private val metadataCleaner =
     new MetadataCleaner(MetadataCleanerType.SHUFFLE_BLOCK_MANAGER, this.cleanup, conf)
-
+  // 参数命名有些不规范，mapId其实就是partitionId
   def forMapTask(shuffleId: Int, mapId: Int, numBuckets: Int, serializer: Serializer) = {
     new ShuffleWriterGroup {
       shuffleStates.putIfAbsent(shuffleId, new ShuffleState(numBuckets))
@@ -155,16 +157,18 @@ class ShuffleBlockManager(blockManager: BlockManager) extends Logging {
   }
 
   /**
-   * Returns the physical file segment in which the given BlockId is located.
-   * This function should only be called if shuffle file consolidation is enabled, as it is
-   * an error condition if we don't find the expected block.
-   */
+    * Returns the physical file segment in which the given BlockId is located.
+    * This function should only be called if shuffle file consolidation is enabled, as it is
+    * an error condition if we don't find the expected block.
+    */
   def getBlockLocation(id: ShuffleBlockId): FileSegment = {
     // Search all file groups associated with this shuffle.
     val shuffleState = shuffleStates(id.shuffleId)
     for (fileGroup <- shuffleState.allFileGroups) {
       val segment = fileGroup.getFileSegmentFor(id.mapId, id.reduceId)
-      if (segment.isDefined) { return segment.get }
+      if (segment.isDefined) {
+        return segment.get
+      }
     }
     throw new IllegalStateException("Failed to find shuffle block: " + id)
   }
@@ -215,23 +219,24 @@ class ShuffleBlockManager(blockManager: BlockManager) extends Logging {
 
 private[spark]
 object ShuffleBlockManager {
+
   /**
-   * A group of shuffle files, one per reducer.
-   * A particular mapper will be assigned a single ShuffleFileGroup to write its output to.
-   */
+    * A group of shuffle files, one per reducer.
+    * A particular mapper will be assigned a single ShuffleFileGroup to write its output to.
+    */
   private class ShuffleFileGroup(val shuffleId: Int, val fileId: Int, val files: Array[File]) {
     /**
-     * Stores the absolute index of each mapId in the files of this group. For instance,
-     * if mapId 5 is the first block in each file, mapIdToIndex(5) = 0.
-     */
+      * Stores the absolute index of each mapId in the files of this group. For instance,
+      * if mapId 5 is the first block in each file, mapIdToIndex(5) = 0.
+      */
     private val mapIdToIndex = new PrimitiveKeyOpenHashMap[Int, Int]()
 
     /**
-     * Stores consecutive offsets of blocks into each reducer file, ordered by position in the file.
-     * This ordering allows us to compute block lengths by examining the following block offset.
-     * Note: mapIdToIndex(mapId) returns the index of the mapper into the vector for every
-     * reducer.
-     */
+      * Stores consecutive offsets of blocks into each reducer file, ordered by position in the file.
+      * This ordering allows us to compute block lengths by examining the following block offset.
+      * Note: mapIdToIndex(mapId) returns the index of the mapper into the vector for every
+      * reducer.
+      */
     private val blockOffsetsByReducer = Array.fill[PrimitiveVector[Long]](files.length) {
       new PrimitiveVector[Long]()
     }
@@ -267,4 +272,5 @@ object ShuffleBlockManager {
       }
     }
   }
+
 }

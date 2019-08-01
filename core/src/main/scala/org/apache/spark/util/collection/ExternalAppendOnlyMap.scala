@@ -32,38 +32,46 @@ import org.apache.spark.serializer.Serializer
 import org.apache.spark.storage.{BlockId, BlockManager}
 
 /**
- * :: DeveloperApi ::
- * An append-only map that spills sorted content to disk when there is insufficient space for it
- * to grow.
- *
- * This map takes two passes over the data:
- *
- *   (1) Values are merged into combiners, which are sorted and spilled to disk as necessary
- *   (2) Combiners are read from disk and merged together
- *
- * The setting of the spill threshold faces the following trade-off: If the spill threshold is
- * too high, the in-memory map may occupy more memory than is available, resulting in OOM.
- * However, if the spill threshold is too low, we spill frequently and incur unnecessary disk
- * writes. This may lead to a performance regression compared to the normal case of using the
- * non-spilling AppendOnlyMap.
- *
- * Two parameters control the memory threshold:
- *
- *   `spark.shuffle.memoryFraction` specifies the collective amount of memory used for storing
- *   these maps as a fraction of the executor's total memory. Since each concurrently running
- *   task maintains one map, the actual threshold for each map is this quantity divided by the
- *   number of running tasks.
- *
- *   `spark.shuffle.safetyFraction` specifies an additional margin of safety as a fraction of
- *   this threshold, in case map size estimation is not sufficiently accurate.
- */
+  * :: DeveloperApi ::
+  * An append-only map that spills sorted content to disk when there is insufficient space for it
+  * to grow.
+  *
+  * This map takes two passes over the data:
+  *
+  * (1) Values are merged into combiners, which are sorted and spilled to disk as necessary
+  * (2) Combiners are read from disk and merged together
+  *
+  * The setting of the spill threshold faces the following trade-off: If the spill threshold is
+  * too high, the in-memory map may occupy more memory than is available, resulting in OOM.
+  * However, if the spill threshold is too low, we spill frequently and incur unnecessary disk
+  * writes. This may lead to a performance regression compared to the normal case of using the
+  * non-spilling AppendOnlyMap.
+  * 溢出阈值的设置面临以下权衡：如果溢出阈值过高，则内存中映射可能占用的内存超过可用内存，
+  * 从而导致OOM。但是，如果溢出阈值太低，我们会频繁溢出并导致不必要的磁盘写入。
+  * 与使用非溢出AppendOnlyMap的正常情况相比，这可能会导致性能下降。
+  *
+  * Two parameters control the memory threshold:
+  * 两个参数控制内存阈值：
+  *
+  * `spark.shuffle.memoryFraction` specifies the collective amount of memory used for storing
+  * these maps as a fraction of the executor's total memory. Since each concurrently running
+  * task maintains one map, the actual threshold for each map is this quantity divided by the
+  * number of running tasks.
+  * `spark.shuffle.memoryFraction`指定用于存储这些映射的内存总量，作为执行程序总内存的一小部分。
+  * 由于每个并发运行的任务都维护一个映射，因此每个映射的实际阈值是该数量除以运行任务的数量
+  *
+  *
+  * `spark.shuffle.safetyFraction` specifies an additional margin of safety as a fraction of
+  * this threshold, in case map size estimation is not sufficiently accurate.
+  * `spark.shuffle.safetyFraction`指定额外的安全边际作为此阈值的一小部分，以防map大小估计不够准确。
+  */
 @DeveloperApi
 class ExternalAppendOnlyMap[K, V, C](
-    createCombiner: V => C,
-    mergeValue: (C, V) => C,
-    mergeCombiners: (C, C) => C,
-    serializer: Serializer = SparkEnv.get.serializer,
-    blockManager: BlockManager = SparkEnv.get.blockManager)
+                                      createCombiner: V => C,
+                                      mergeValue: (C, V) => C,
+                                      mergeCombiners: (C, C) => C,
+                                      serializer: Serializer = SparkEnv.get.serializer,
+                                      blockManager: BlockManager = SparkEnv.get.blockManager)
   extends Iterable[(K, C)] with Serializable with Logging {
 
   import ExternalAppendOnlyMap._
@@ -87,14 +95,14 @@ class ExternalAppendOnlyMap[K, V, C](
   private val trackMemoryThreshold = 1000
 
   /**
-   * Size of object batches when reading/writing from serializers.
-   *
-   * Objects are written in batches, with each batch using its own serialization stream. This
-   * cuts down on the size of reference-tracking maps constructed when deserializing a stream.
-   *
-   * NOTE: Setting this too low can cause excessive copying when serializing, since some serializers
-   * grow internal data structures by growing + copying every time the number of objects doubles.
-   */
+    * Size of object batches when reading/writing from serializers.
+    *
+    * Objects are written in batches, with each batch using its own serialization stream. This
+    * cuts down on the size of reference-tracking maps constructed when deserializing a stream.
+    *
+    * NOTE: Setting this too low can cause excessive copying when serializing, since some serializers
+    * grow internal data structures by growing + copying every time the number of objects doubles.
+    */
   private val serializerBatchSize = sparkConf.getLong("spark.shuffle.spill.batchSize", 10000)
 
   // How many times we have spilled so far
@@ -109,14 +117,14 @@ class ExternalAppendOnlyMap[K, V, C](
   private val ser = serializer.newInstance()
 
   /**
-   * Insert the given key and value into the map.
-   *
-   * If the underlying map is about to grow, check if the global pool of shuffle memory has
-   * enough room for this to happen. If so, allocate the memory required to grow the map;
-   * otherwise, spill the in-memory map to disk.
-   *
-   * The shuffle memory usage of the first trackMemoryThreshold entries is not tracked.
-   */
+    * Insert the given key and value into the map.
+    *
+    * If the underlying map is about to grow, check if the global pool of shuffle memory has
+    * enough room for this to happen. If so, allocate the memory required to grow the map;
+    * otherwise, spill the in-memory map to disk.
+    *
+    * The shuffle memory usage of the first trackMemoryThreshold entries is not tracked.
+    */
   def insert(key: K, value: V) {
     val update: (Boolean, C) => C = (hadVal, oldVal) => {
       if (hadVal) mergeValue(oldVal, value) else createCombiner(value)
@@ -150,8 +158,8 @@ class ExternalAppendOnlyMap[K, V, C](
   }
 
   /**
-   * Sort the existing contents of the in-memory map and spill them to a temporary file on disk.
-   */
+    * Sort the existing contents of the in-memory map and spill them to a temporary file on disk.
+    */
   private def spill(mapSize: Long) {
     spillCount += 1
     logWarning("Spilling in-memory map of %d MB to disk (%d time%s so far)"
@@ -206,12 +214,13 @@ class ExternalAppendOnlyMap[K, V, C](
   }
 
   def memoryBytesSpilled: Long = _memoryBytesSpilled
+
   def diskBytesSpilled: Long = _diskBytesSpilled
 
   /**
-   * Return an iterator that merges the in-memory map with the spilled maps.
-   * If no spill has occurred, simply return the in-memory map's iterator.
-   */
+    * Return an iterator that merges the in-memory map with the spilled maps.
+    * If no spill has occurred, simply return the in-memory map's iterator.
+    */
   override def iterator: Iterator[(K, C)] = {
     if (spilledMaps.isEmpty) {
       currentMap.iterator
@@ -221,8 +230,8 @@ class ExternalAppendOnlyMap[K, V, C](
   }
 
   /**
-   * An iterator that sort-merges (K, C) pairs from the in-memory map and the spilled maps
-   */
+    * An iterator that sort-merges (K, C) pairs from the in-memory map and the spilled maps
+    */
   private class ExternalIterator extends Iterator[(K, C)] {
 
     // A queue that maintains a buffer for each stream we are currently merging
@@ -242,11 +251,11 @@ class ExternalAppendOnlyMap[K, V, C](
     }
 
     /**
-     * Fetch from the given iterator until a key of different hash is retrieved.
-     *
-     * In the event of key hash collisions, this ensures no pairs are hidden from being merged.
-     * Assume the given iterator is in sorted order.
-     */
+      * Fetch from the given iterator until a key of different hash is retrieved.
+      *
+      * In the event of key hash collisions, this ensures no pairs are hidden from being merged.
+      * Assume the given iterator is in sorted order.
+      */
     private def getMorePairs(it: BufferedIterator[(K, C)]): ArrayBuffer[(K, C)] = {
       val kcPairs = new ArrayBuffer[(K, C)]
       if (it.hasNext) {
@@ -262,9 +271,9 @@ class ExternalAppendOnlyMap[K, V, C](
     }
 
     /**
-     * If the given buffer contains a value for the given key, merge that value into
-     * baseCombiner and remove the corresponding (K, C) pair from the buffer.
-     */
+      * If the given buffer contains a value for the given key, merge that value into
+      * baseCombiner and remove the corresponding (K, C) pair from the buffer.
+      */
     private def mergeIfKeyExists(key: K, baseCombiner: C, buffer: StreamBuffer): C = {
       var i = 0
       while (i < buffer.pairs.length) {
@@ -279,14 +288,14 @@ class ExternalAppendOnlyMap[K, V, C](
     }
 
     /**
-     * Return true if there exists an input stream that still has unvisited pairs.
-     */
+      * Return true if there exists an input stream that still has unvisited pairs.
+      */
     override def hasNext: Boolean = mergeHeap.length > 0
 
     /**
-     * Select a key with the minimum hash, then combine all values with the same key from all
-     * input streams.
-     */
+      * Select a key with the minimum hash, then combine all values with the same key from all
+      * input streams.
+      */
     override def next(): (K, C) = {
       if (mergeHeap.length == 0) {
         throw new NoSuchElementException
@@ -321,15 +330,15 @@ class ExternalAppendOnlyMap[K, V, C](
     }
 
     /**
-     * A buffer for streaming from a map iterator (in-memory or on-disk) sorted by key hash.
-     * Each buffer maintains the lowest-ordered keys in the corresponding iterator. Due to
-     * hash collisions, it is possible for multiple keys to be "tied" for being the lowest.
-     *
-     * StreamBuffers are ordered by the minimum key hash found across all of their own pairs.
-     */
+      * A buffer for streaming from a map iterator (in-memory or on-disk) sorted by key hash.
+      * Each buffer maintains the lowest-ordered keys in the corresponding iterator. Due to
+      * hash collisions, it is possible for multiple keys to be "tied" for being the lowest.
+      *
+      * StreamBuffers are ordered by the minimum key hash found across all of their own pairs.
+      */
     private class StreamBuffer(
-        val iterator: BufferedIterator[(K, C)],
-        val pairs: ArrayBuffer[(K, C)])
+                                val iterator: BufferedIterator[(K, C)],
+                                val pairs: ArrayBuffer[(K, C)])
       extends Comparable[StreamBuffer] {
 
       def isEmpty = pairs.length == 0
@@ -345,11 +354,12 @@ class ExternalAppendOnlyMap[K, V, C](
         if (other.minKeyHash < minKeyHash) -1 else if (other.minKeyHash == minKeyHash) 0 else 1
       }
     }
+
   }
 
   /**
-   * An iterator that returns (K, C) pairs in sorted order from an on-disk map
-   */
+    * An iterator that returns (K, C) pairs in sorted order from an on-disk map
+    */
   private class DiskMapIterator(file: File, blockId: BlockId, batchSizes: ArrayBuffer[Long])
     extends Iterator[(K, C)] {
     private val fileStream = new FileInputStream(file)
@@ -364,8 +374,8 @@ class ExternalAppendOnlyMap[K, V, C](
     private var objectsRead = 0
 
     /**
-     * Construct a stream that reads only from the next batch.
-     */
+      * Construct a stream that reads only from the next batch.
+      */
     private def nextBatchStream(): InputStream = {
       if (batchSizes.length > 0) {
         ByteStreams.limit(bufferedStream, batchSizes.remove(0))
@@ -376,11 +386,11 @@ class ExternalAppendOnlyMap[K, V, C](
     }
 
     /**
-     * Return the next (K, C) pair from the deserialization stream.
-     *
-     * If the current batch is drained, construct a stream for the next batch and read from it.
-     * If no more pairs are left, return null.
-     */
+      * Return the next (K, C) pair from the deserialization stream.
+      *
+      * If the current batch is drained, construct a stream for the next batch and read from it.
+      * If no more pairs are left, return null.
+      */
     private def readNextItem(): (K, C) = {
       try {
         val item = deserializeStream.readObject().asInstanceOf[(K, C)]
@@ -421,21 +431,22 @@ class ExternalAppendOnlyMap[K, V, C](
       file.delete()
     }
   }
+
 }
 
 private[spark] object ExternalAppendOnlyMap {
 
   /**
-   * Return the key hash code of the given (key, combiner) pair.
-   * If the key is null, return a special hash code.
-   */
+    * Return the key hash code of the given (key, combiner) pair.
+    * If the key is null, return a special hash code.
+    */
   private def getKeyHashCode[K, C](kc: (K, C)): Int = {
     if (kc._1 == null) 0 else kc._1.hashCode()
   }
 
   /**
-   * A comparator for (key, combiner) pairs based on their key hash codes.
-   */
+    * A comparator for (key, combiner) pairs based on their key hash codes.
+    */
   private class KCComparator[K, C] extends Comparator[(K, C)] {
     def compare(kc1: (K, C), kc2: (K, C)): Int = {
       val hash1 = getKeyHashCode(kc1)
@@ -443,4 +454,5 @@ private[spark] object ExternalAppendOnlyMap {
       if (hash1 < hash2) -1 else if (hash1 == hash2) 0 else 1
     }
   }
+
 }
