@@ -79,3 +79,5 @@ sql/hive-thriftserver/test_warehouses
 # For R session data
 .RHistory
 .RData
+build/classes/
+sbt/sbt-launch-0.13.2.jar
